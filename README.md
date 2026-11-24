@@ -1,1 +1,47 @@
-# beyond-the-bullet
+# Beyond the Bullet
+
+Local, resume-grounded interview practice for defending every line of your experience.
+
+This repository currently implements MVP stages 1 and 2:
+
+- local-only, no-login profile creation with resume text or TXT/PDF/DOCX upload
+- editable parsed bullets and three focused interview rounds per bullet
+- adaptive follow-up questions through Ollama when available, with an offline fallback
+- persisted sessions, pause/resume, transcript-grounded feedback, approved Experience Vault facts, and a bullet dashboard API
+- browser-friendly listen controls and voice-ready UI; full local STT/TTS remains optional
+
+## Run locally
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+npm --prefix frontend install
+npm --prefix frontend run build
+uvicorn backend.main:app --reload
+```
+
+Open <http://127.0.0.1:8000>. The app stores local data in `data/store.json`, which is ignored by Git.
+
+For local LLM questions, follow [docs/Llama-LLM-Local-Setup.md](docs/Llama-LLM-Local-Setup.md), install and run [Ollama](https://ollama.com), then pull a model:
+
+```bash
+ollama pull llama3.2:3b
+```
+
+Set `OLLAMA_URL` and `OLLAMA_MODEL` to use another local Ollama model. If Ollama is unavailable, the app uses clearly bounded deterministic prompts so the interface remains testable offline.
+
+## Tests
+
+```bash
+pytest -q
+npm --prefix frontend run build
+```
+
+Playwright tests can be added under `frontend/tests` and run with `npm --prefix frontend test` after starting the server.
+
+The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the separate local admin dashboard with `uvicorn backend.admin:app --reload --port 8001`, then open <http://127.0.0.1:8001>. Usage is stored in `data/metrics.sqlite3` and includes LLM calls plus session duration and forward/backward conversation counts.
+
+## Scope and privacy
+
+The app is intentionally a localhost prototype: there is no login, hosted inference, analytics export, URL scraping, or public deployment. Resume/profile text is treated as untrusted candidate data; it is not used as system instructions. Delete a local profile from the profile menu when its data should be removed.
