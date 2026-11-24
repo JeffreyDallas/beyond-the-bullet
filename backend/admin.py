@@ -27,6 +27,11 @@ async def sessions() -> list[dict]:
     return metrics.sessions()
 
 
+@app.get("/api/admin/agent-performance")
+async def agent_performance() -> dict:
+    return metrics.agent_performance()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard() -> str:
     return Path(__file__).parent.parent.joinpath("admin", "index.html").read_text()

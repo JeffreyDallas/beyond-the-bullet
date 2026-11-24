@@ -42,6 +42,16 @@ def session_or_404(session_id: str) -> Session:
     return Session.model_validate(raw)
 
 
+def record_agent_activity(session: Session, profile: Profile, bullet: ResumeBullet, question: str, follow_up: bool) -> None:
+    bullet_terms = set(re.findall(r"[a-z]{4,}", bullet.text.lower()))
+    question_terms = set(re.findall(r"[a-z]{4,}", question.lower()))
+    overlap = len(bullet_terms & question_terms)
+    relevance = min(1.0, overlap / 3.0)
+    deep_dive = bool(re.search(r"\b(tradeoff|constraint|evidence|validate|measure|failure|alternative|personally)\b", question.lower()))
+    notes = "Question overlaps the selected bullet." if relevance >= 0.33 else "Question has low lexical overlap; review grounding."
+    metrics.record_agent_activity(session.id, profile.name, question, relevance, follow_up, deep_dive, notes)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     yield
@@ -142,6 +152,7 @@ async def start_session(session_id: str) -> dict:
     question, provider, input_tokens, output_tokens = await llm.complete(prompt, fallback)
     metrics.record_usage(profile.name, llm.model, input_tokens, output_tokens, session.id, provider)
     metrics.start_session(session.id, profile.name)
+    record_agent_activity(session, profile, bullet, question, follow_up=False)
     session.status = "active"
     session.current_round = 1
     session.turns = [Turn(role="agent", text=question, bullet_id=bullet.id)]
@@ -178,6 +189,7 @@ async def answer_session(session_id: str, payload: AnswerInput) -> dict:
         session.feedback = {"strengths": ["Completed a focused explanation."], "gaps": ["Add concrete evidence and measurable impact where possible."], "next_step": "Approve useful facts to your Experience Vault and revisit the gaps."}
     else:
         session.turns.append(Turn(role="agent", text=question, bullet_id=bullet.id))
+        record_agent_activity(session, profile, bullet, question, follow_up=True)
         session.unresolved_gaps = ["specific evidence", "tradeoff or constraint"]
     session.updated_at = datetime.utcnow()
     store.put("sessions", session.id, session)

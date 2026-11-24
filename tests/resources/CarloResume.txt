@@ -1,0 +1,98 @@
+
+# Carlo Morgan
+**Junior Firmware Engineer | Embedded Software Engineer**
+
+Austin, TX | (512) 555-0142 | alex.morgan@example.com  
+LinkedIn: linkedin.com/in/alex-morgan-demo  
+GitHub: github.com/alex-morgan-demo
+
+## PROFESSIONAL SUMMARY
+
+Junior Firmware Engineer with 2+ years of experience developing, testing, and debugging embedded software for microcontroller-based devices. Proficient in C, C++, Python, and embedded communication protocols including UART, SPI, I2C, and CAN. Hands-on experience with ARM Cortex-M microcontrollers, FreeRTOS, hardware debugging, and firmware validation. Strong foundation in computer architecture, digital electronics, and real-time embedded systems.
+
+## TECHNICAL SKILLS
+
+- **Programming Languages:** C, C++, Python, Bash, Assembly (ARM)
+- **Embedded Platforms:** STM32, ARM Cortex-M, ESP32, Arduino
+- **RTOS & Operating Systems:** FreeRTOS, Embedded Linux
+- **Communication Protocols:** UART, SPI, I2C, CAN, USB, TCP/IP
+- **Development Tools:** Git, GCC, CMake, STM32CubeIDE, VS Code, GDB
+- **Hardware Debugging:** JTAG, SWD, Oscilloscope, Logic Analyzer, Multimeter
+- **Other:** Firmware Testing, Bootloaders, OTA Updates, CI/CD, Unit Testing
+
+## PROFESSIONAL EXPERIENCE
+
+### Firmware Engineer I
+**NovaTech Embedded Solutions | Austin, TX**  
+*June 2024 – Present*
+
+- Develop and maintain embedded firmware in C and C++ for ARM Cortex-M microcontrollers used in industrial monitoring devices.
+- Implement UART, SPI, and I2C drivers to communicate with sensors and peripheral devices.
+- Develop FreeRTOS tasks for real-time sensor acquisition, data processing, and communication.
+- Debug firmware issues using JTAG, GDB, oscilloscopes, and logic analyzers.
+- Optimize firmware memory usage, reducing RAM consumption by approximately 15%.
+- Collaborate with hardware engineers to support board bring-up and prototype validation.
+- Write Python scripts to automate firmware testing and device configuration.
+- Participate in code reviews, defect tracking, and Git-based development workflows.
+
+### Embedded Software Engineering Co-op
+**CircuitWave Technologies | Dallas, TX**  
+*August 2023 – May 2024*
+
+- Assisted senior engineers in developing firmware for IoT sensor devices using STM32 microcontrollers.
+- Implemented device drivers for temperature, humidity, and accelerometer sensors.
+- Developed Python test utilities to validate serial communication and firmware functionality.
+- Supported debugging of I2C communication errors and intermittent device resets.
+- Created unit tests for firmware modules and documented test procedures.
+- Participated in prototype hardware testing and firmware integration.
+
+### Electronics Engineering Intern
+**BrightCore Electronics | Houston, TX**  
+*May 2022 – August 2022*
+
+- Assisted engineering teams with embedded hardware and firmware validation.
+- Developed basic C programs for microcontroller-based evaluation boards.
+- Used oscilloscopes and logic analyzers to troubleshoot digital signals.
+- Supported testing of UART and SPI communication interfaces.
+- Prepared technical documentation and hardware test reports.
+
+## EDUCATION
+
+### Bachelor of Science in Computer Engineering
+**North Valley Institute of Technology | Texas**  
+*Graduated May 2024*
+
+GPA: 3.6 / 4.0
+
+**Relevant Coursework:**
+- Embedded Systems Design
+- Microprocessor Architecture
+- Real-Time Operating Systems
+- Digital Logic Design
+- Computer Networks
+- Data Structures and Algorithms
+- Electronics and Circuit Analysis
+
+## ACADEMIC PROJECTS
+
+### Smart Home Environmental Monitoring System
+*STM32, C, FreeRTOS, MQTT*
+
+- Built an embedded environmental monitoring system using STM32 and multiple digital sensors.
+- Implemented FreeRTOS tasks for sensor polling and communication.
+- Transmitted sensor readings to a cloud dashboard through an MQTT gateway.
+- Developed a basic watchdog recovery mechanism for unexpected software hangs.
+
+### Custom UART Bootloader
+*ARM Cortex-M, C, Python*
+
+- Developed a basic firmware bootloader capable of receiving firmware images over UART.
+- Implemented CRC validation to detect corrupted firmware transfers.
+- Created a Python utility for uploading firmware images from a development computer.
+- Tested firmware update and recovery scenarios on an STM32 development board.
+
+## ADDITIONAL INFORMATION
+
+- Familiar with Agile development and Git-based collaboration.
+- Experience reading microcontroller datasheets and hardware schematics.
+- Interested in embedded systems, IoT devices, robotics, and automotive firmware.

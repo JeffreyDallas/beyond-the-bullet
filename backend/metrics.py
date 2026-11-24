@@ -28,6 +28,17 @@ class MetricsDB:
                     turns_forward INTEGER NOT NULL DEFAULT 0,
                     turns_backward INTEGER NOT NULL DEFAULT 0
                 );
+                CREATE TABLE IF NOT EXISTS agent_activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    time TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    user TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    relevance_score REAL NOT NULL,
+                    follow_up INTEGER NOT NULL,
+                    deep_dive INTEGER NOT NULL,
+                    notes TEXT NOT NULL
+                );
                 """
             )
 
@@ -65,6 +76,13 @@ class MetricsDB:
         with self.connection() as connection:
             connection.execute("UPDATE session_metrics SET ended_at=? WHERE session_id=?", (datetime.now(timezone.utc).isoformat(), session_id))
 
+    def record_agent_activity(self, session_id: str, user: str, question: str, relevance_score: float, follow_up: bool, deep_dive: bool, notes: str) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                "INSERT INTO agent_activity(time,session_id,user,question,relevance_score,follow_up,deep_dive,notes) VALUES(?,?,?,?,?,?,?,?)",
+                (datetime.now(timezone.utc).isoformat(), session_id, user, question, relevance_score, int(follow_up), int(deep_dive), notes),
+            )
+
     def usage(self) -> list[dict]:
         with self.connection() as connection:
             return [dict(row) for row in connection.execute("SELECT * FROM llm_usage ORDER BY time DESC").fetchall()]
@@ -81,4 +99,12 @@ class MetricsDB:
                 """
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def agent_performance(self) -> dict:
+        with self.connection() as connection:
+            summary = connection.execute(
+                "SELECT COUNT(*) AS questions, COALESCE(AVG(relevance_score),0) AS avg_relevance, COALESCE(AVG(follow_up),0) AS follow_up_rate, COALESCE(AVG(deep_dive),0) AS deep_dive_rate FROM agent_activity"
+            ).fetchone()
+            recent = connection.execute("SELECT * FROM agent_activity ORDER BY time DESC LIMIT 50").fetchall()
+            return {"summary": dict(summary), "recent": [dict(row) for row in recent]}
 
