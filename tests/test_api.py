@@ -17,6 +17,8 @@ def test_health_and_profile_flow(tmp_path, monkeypatch):
     session = plan.json()[0]
     started = client.post(f"/api/sessions/{session['id']}/start")
     assert started.status_code == 200
+    assert started.json()["provider"] == "mock"
     answered = client.post(f"/api/sessions/{session['id']}/answer", json={"text": "I owned the service design and measured latency."})
     assert answered.status_code == 200
+    assert answered.json()["provider"] == "mock"
 

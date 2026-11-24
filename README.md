@@ -47,3 +47,5 @@ The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the
 The app is intentionally a localhost prototype: there is no login, hosted inference, analytics export, URL scraping, or public deployment. Resume/profile text is treated as untrusted candidate data; it is not used as system instructions. Delete a local profile from the profile menu when its data should be removed.
 
 The default interview mode is text-only. Speech-to-text and text-to-speech are not enabled in the user flow. The Playwright suite covers the Carlo TXT resume plus the Daniel PDF and Melissa DOCX resumes, using a deterministic mock LLM and three candidate answers per interview.
+
+Automated tests never spend model tokens: `tests/conftest.py` forces `MOCK_LLM=1` for unit tests, and the Playwright web servers use the same flag. The mock provider exercises API responses, session state transitions, transcript rendering, profile switching, parsing, metrics, and admin-agent reporting without calling Ollama or a paid model. Use the real Ollama model only for manual development runs.

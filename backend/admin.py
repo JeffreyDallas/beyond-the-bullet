@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from .metrics import MetricsDB
+from .storage import JsonStore
 
 
 metrics = MetricsDB()
+store = JsonStore()
 app = FastAPI(title="Beyond the Bullet Admin", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -30,6 +32,23 @@ async def sessions() -> list[dict]:
 @app.get("/api/admin/agent-performance")
 async def agent_performance() -> dict:
     return metrics.agent_performance()
+
+
+@app.get("/api/admin/conversations")
+async def conversations() -> list[dict]:
+    records = []
+    for session in store.all()["sessions"].values():
+        for index, turn in enumerate(session.get("turns", []), start=1):
+            records.append({
+                "session_id": session["id"],
+                "user": session["profile_id"],
+                "status": session["status"],
+                "turn_number": index,
+                "role": turn["role"],
+                "text": turn["text"],
+                "created_at": turn.get("created_at", ""),
+            })
+    return records
 
 
 @app.get("/", response_class=HTMLResponse)

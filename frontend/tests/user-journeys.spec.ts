@@ -63,3 +63,32 @@ test("plays back a pre-generated transcript in the conversation area", async ({ 
   await expect(page.locator(".conversation")).toContainText("I owned the ingestion service");
   await expect(page.getByText("Session reflection")).toBeVisible();
 });
+
+test("shows expected token, session, agent, and conversation results in admin dashboard", async ({ page, request }) => {
+  const profileResponse = await request.post("/api/profiles", {
+    data: { name: `Admin E2E User ${Date.now()}`, raw_text: "Built a reliable payment reconciliation service with audit-ready reports and measurable recovery improvements." },
+  });
+  const profile = await profileResponse.json();
+  const planResponse = await request.post(`/api/profiles/${profile.id}/plan`, { data: {} });
+  const session = (await planResponse.json())[0];
+  await request.post(`/api/sessions/${session.id}/start`);
+  for (const answer of [
+    "I owned the reconciliation workflow and its audit trail.",
+    "I handled retries and designed the process around the reporting constraints.",
+    "I measured recovery behavior with integration tests and operational metrics.",
+  ]) {
+    await request.post(`/api/sessions/${session.id}/answer`, { data: { text: answer } });
+  }
+
+  await page.goto("http://127.0.0.1:8001/");
+  await expect(page.getByText("Session usage")).toBeVisible();
+  await expect(page.locator("#sessions")).toContainText(profile.name);
+  await expect(page.locator("#sessions")).toContainText("3");
+  await expect(page.locator("#usage")).toContainText("mock");
+  await expect(page.locator("#usage")).toContainText(/\d+/);
+  await expect(page.getByText("AI interviewer performance")).toBeVisible();
+  await expect(page.locator("#agent-activities")).toContainText("What tradeoff or constraint");
+  await expect(page.getByText("Conversation records")).toBeVisible();
+  await expect(page.locator("#conversations")).toContainText("I owned the reconciliation workflow");
+  await expect(page.locator("#conversations")).toContainText("agent");
+});
