@@ -40,6 +40,8 @@ npm --prefix frontend run build
 
 Playwright tests can be added under `frontend/tests` and run with `npm --prefix frontend test` after starting the server.
 
+To watch the complete Playwright suite in a browser, use `npm --prefix frontend run test:headed`. For a slower run that makes each browser action easier to follow, use `npm --prefix frontend run test:headed:slow` (500 ms between actions). You can choose another delay with `PW_SLOW_MO`, for example `PW_SLOW_MO=1000 npm --prefix frontend run test:headed`.
+
 The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the separate local admin dashboard with `uvicorn backend.admin:app --reload --port 8001`, then open <http://127.0.0.1:8001>. Usage is stored in `data/metrics.sqlite3` and includes LLM calls plus session duration and forward/backward conversation counts.
 
 ## Scope and privacy
