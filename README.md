@@ -2,7 +2,21 @@
 
 Local, resume-grounded interview practice for defending every line of your experience.
 
-This repository currently implements the local MVP:
+## Table of contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Run locally](#run-locally)
+- [Tests](#tests)
+- [Scope and privacy](#scope-and-privacy)
+- [Optional local voice models](#optional-local-voice-models)
+- [Optional browser voice mode](#optional-browser-voice-mode)
+
+## Features
+
+Beyond the Bullet is a local-first AI interview coach. It turns a resume into a set of grouped work, education, and project histories, then helps the candidate explain ownership, implementation decisions, tradeoffs, and measurable outcomes.
+
+The repository currently implements the local MVP:
 
 - local-only, no-login profile creation with resume text or TXT/PDF/DOCX upload
 - grouped parsed work, education, and project history with source-backed bullet lists
@@ -10,7 +24,30 @@ This repository currently implements the local MVP:
 - LangGraph orchestration for opening questions, follow-ups, transcript state, and model-driven completion
 - automatic progression from one planned job, education entry, or project to the next, with a continuous transcript in the browser
 - persisted sessions, pause/resume, transcript-grounded feedback, approved Experience Vault facts, and a bullet dashboard API
-- optional browser voice mode with automatic pause detection, recognition recovery, and an in-panel voice debug trace; full local STT/TTS remains optional
+- optional browser voice mode with automatic pause detection, recognition recovery, and browser-console diagnostics
+- optional local `faster-whisper` speech-to-text and Kokoro text-to-speech adapters
+- read-only admin dashboard for sessions, token usage, user progress, conversation records, and AI interviewer activity
+- deterministic mock provider and repeatable Carlo, Daniel, and Melissa resume workflows for UI testing without paid model calls
+
+## Screenshots
+
+### Interview workspace
+
+The main workspace combines resume parsing, grouped history, and a continuous interview transcript.
+
+![Beyond the Bullet mock interview](docs/assets/mock_interview.png)
+
+### Admin session usage
+
+The local admin dashboard exposes session duration, forward/backward navigation, and token usage.
+
+![Beyond the Bullet admin sessions](docs/assets/admin_sessions.png)
+
+### Admin users and progress
+
+Administrators can select a user and review multiple sessions, progress, and a selected conversation.
+
+![Beyond the Bullet admin users](docs/assets/admin_users.png)
 
 ## Run locally
 
@@ -93,7 +130,7 @@ For development with Vite:
 VITE_ENABLE_VOICE=true npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Voice mode uses the browser's `SpeechRecognition`/`webkitSpeechRecognition` and `speechSynthesis` APIs. The coach transcript types progressively while speech plays; after the coach finishes, the microphone starts automatically and interim candidate speech appears live in the transcript field. A brief pause submits the answer automatically; unexpected recognition endings are recovered when possible. Expand the Voice debug panel under the transcript to inspect phase transitions, microphone track state, recognition events, silence timers, and transcript length. There are no Talk or Listen toggle buttons in voice mode. Browser support and microphone permissions are required. Automated tests intentionally leave this flag disabled.
+Voice mode uses the browser's `SpeechRecognition`/`webkitSpeechRecognition` and `speechSynthesis` APIs. The coach transcript types progressively while speech plays; after the coach finishes, the microphone starts automatically and interim candidate speech appears live in the transcript field. A brief pause submits the answer automatically; unexpected recognition endings are recovered when possible. Voice diagnostics are written to the browser developer console with the `[Beyond the Bullet voice]` prefix. There are no Talk or Listen toggle buttons in voice mode. Browser support and microphone permissions are required. Automated tests intentionally leave this flag disabled.
 
 For a built app, voice mode can also be enabled per URL without rebuilding by opening <http://127.0.0.1:8000/?voice=1>. The browser will request microphone permission when the first coach question finishes speaking.
 
