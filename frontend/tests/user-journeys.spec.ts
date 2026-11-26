@@ -15,7 +15,7 @@ test("creates a user, uploads a resume, and displays grouped parsed experiences"
   await expect(firmware).toContainText("Develop and maintain embedded firmware");
 });
 
-test("switches between saved user profiles from the top-right menu", async ({ page }) => {
+test("switches between saved user profiles from the Step 1 chooser", async ({ page }) => {
   const firstUser = "E2E Switch A";
   const secondUser = "E2E Switch B";
   await page.goto("/");
@@ -26,7 +26,7 @@ test("switches between saved user profiles from the top-right menu", async ({ pa
   await expect(page.getByRole("button", { name: new RegExp(firstUser) })).toBeVisible();
 
   await page.getByRole("button", { name: new RegExp(firstUser) }).click();
-  await page.getByRole("button", { name: /New profile/ }).click();
+  await page.getByRole("button", { name: /Create new profile/ }).click();
   await page.getByRole("textbox", { name: "Profile name" }).fill(secondUser);
   await page.locator('input[type="file"]').setInputFiles(resource("Melissa_Parker_Commercial_Real_Estate_Accountant.docx"));
   await page.getByRole("button", { name: "Parse & save profile" }).click();
@@ -75,8 +75,8 @@ test("plays back a pre-generated transcript in the conversation area", async ({ 
   }
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Choose profile" }).click();
-  await page.locator(".popover button").filter({ hasText: profile.name }).last().click();
+  await page.getByRole("button", { name: "Choose existing profile" }).click();
+  await page.locator(".profile-chooser .popover button").filter({ hasText: profile.name }).last().click();
   await expect(page.locator(".conversation")).toBeVisible();
   await expect(page.locator(".conversation .turn.agent")).toHaveCount(3);
   await expect(page.locator(".conversation .turn.user")).toHaveCount(3);
