@@ -43,14 +43,14 @@ test("resets a profile into a new session without deleting previous conversation
   await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Reset");
   await page.getByRole("textbox", { name: "Paste resume or profile text" }).fill("Built a resilient service that processed customer events with measurable reliability improvements.");
   await page.getByRole("button", { name: "Parse & save profile" }).click();
-  await expect(page.getByRole("button", { name: /Reset \/ New session/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Reset/ })).toBeVisible();
 
   const before = await request.get("/api/profiles");
   const profile = (await before.json()).find((item: { name: string }) => item.name === "E2E Reset");
   const sessionsBefore = await request.get(`/api/profiles/${profile.id}/sessions`);
   expect((await sessionsBefore.json()).length).toBe(1);
 
-  await page.getByRole("button", { name: /Reset \/ New session/ }).click();
+  await page.getByRole("button", { name: /^Reset/ }).click();
   await expect(page.getByText("Started a new interview session from the beginning.")).toBeVisible();
   await expect(page.locator(".conversation .turn.agent")).toHaveCount(1);
 
@@ -107,4 +107,9 @@ test("plays back a pre-generated transcript in the conversation area", async ({ 
   await expect(page.locator(".conversation")).toContainText("I owned the ingestion service");
   await expect(page.getByText("Session reflection")).toBeVisible();
   await expect(page.getByText("Round 4 of 5")).toBeVisible();
+  const scrollPosition = await page.locator(".conversation").evaluate((element) => ({
+    bottom: element.scrollTop + element.clientHeight,
+    height: element.scrollHeight,
+  }));
+  expect(scrollPosition.bottom).toBeGreaterThanOrEqual(scrollPosition.height - 1);
 });

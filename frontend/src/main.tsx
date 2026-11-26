@@ -17,7 +17,7 @@ type Profile = {
     category?: string;
   }[];
 };
-type Turn = { role: string; text: string };
+type Turn = { role: string; text: string; created_at?: string };
 type TranscriptTurn = Turn & { sessionId: string; index: number };
 type Session = {
   id: string;
@@ -26,6 +26,7 @@ type Session = {
   current_round: number;
   max_rounds: number;
   turns: Turn[];
+  updated_at?: string;
   feedback: { strengths?: string[]; gaps?: string[]; next_step?: string };
 };
 type VoiceRecognition = {
@@ -92,6 +93,7 @@ function App() {
   const [listening, setListening] = useState(false);
   const [waitingForSilence, setWaitingForSilence] = useState(false);
   const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const [voiceReplayNonce, setVoiceReplayNonce] = useState(0);
   const [coachText, setCoachText] = useState<Record<string, string>>({});
   const recognitionRef = useRef<VoiceRecognition | null>(null);
   const startingRecognitionRef = useRef(false);
@@ -107,6 +109,8 @@ function App() {
   const answerRef = useRef(answer);
   const activeRef = useRef(active);
   const voicePhaseRef = useRef<VoicePhase>("idle");
+  const conversationRef = useRef<HTMLDivElement | null>(null);
+  const lastVoiceTurnKeyRef = useRef<string | null>(null);
   const [dashboard, setDashboard] = useState<{
     bullets: { status: string; practice_count: number }[];
     facts: { text: string }[];
@@ -129,6 +133,13 @@ function App() {
   useEffect(() => {
     voicePhaseRef.current = voicePhase;
   }, [voicePhase]);
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    if (!conversation) return;
+    requestAnimationFrame(() => {
+      conversation.scrollTop = conversation.scrollHeight;
+    });
+  }, [conversationTurns.length, active?.id, active?.turns.length]);
   const logVoice = (event: string, detail = "", phase?: VoicePhase) => {
     const entry = {
       time: new Date().toISOString(),
@@ -181,11 +192,19 @@ function App() {
       sessionId: session.id,
       index,
     }));
+  const sortTranscript = (turns: TranscriptTurn[]) =>
+    [...turns].sort((left, right) => {
+      const leftTime = left.created_at ? Date.parse(left.created_at) : 0;
+      const rightTime = right.created_at ? Date.parse(right.created_at) : 0;
+      return leftTime - rightTime || left.sessionId.localeCompare(right.sessionId) || left.index - right.index;
+    });
   const mergeTranscript = (session: Session) =>
-    setConversationTurns((current) => [
-      ...current.filter((turn) => turn.sessionId !== session.id),
-      ...transcriptFor(session),
-    ]);
+    setConversationTurns((current) =>
+      sortTranscript([
+        ...current.filter((turn) => turn.sessionId !== session.id),
+        ...transcriptFor(session),
+      ]),
+    );
   const refreshProfiles = async () =>
     setProfiles(await api<Profile[]>("/profiles"));
   useEffect(() => {
@@ -248,12 +267,25 @@ function App() {
         });
       setSessions(loadedSessions);
       setConversationTurns(
-        loadedSessions.flatMap((session) => transcriptFor(session)),
+        sortTranscript(loadedSessions.flatMap((session) => transcriptFor(session))),
       );
-      const current = loadedSessions.find(
-        (session) => session.status === "active",
-      );
-      if (current) setActive(displaySession(current));
+      const current = [...loadedSessions]
+        .filter((session) => session.status === "active")
+        .sort(
+          (left, right) =>
+            Date.parse(left.updated_at || "") - Date.parse(right.updated_at || ""),
+        )
+        .pop();
+      if (current) {
+        const latestAgentIndex = current.turns
+          .map((turn, index) => (turn.role === "agent" ? index : -1))
+          .filter((index) => index >= 0)
+          .pop();
+        if (latestAgentIndex !== undefined) {
+          lastVoiceTurnKeyRef.current = `${current.id}:${latestAgentIndex}`;
+        }
+        setActive(displaySession(current));
+      }
       else {
         const latestCompleted = [...loadedSessions]
           .reverse()
@@ -337,6 +369,12 @@ function App() {
       setBusy(false);
     }
   };
+  const continueCurrentSession = () => {
+    if (!active || active.status !== "active" || busy) return;
+    lastVoiceTurnKeyRef.current = null;
+    setVoiceReplayNonce((current) => current + 1);
+    setNotice("Session continued. The coach is ready for your answer.");
+  };
   const openSession = (session: Session) => {
     if (session.status === "complete") setActive(session);
     else void start(session);
@@ -376,6 +414,7 @@ function App() {
     }
     submissionInFlightRef.current = true;
     const requestStartedAt = performance.now();
+    const wantsNextHistory = /\b(move on|next\s+(job|role|history|experience|question)|skip\s+(this|to))\b/i.test(responseText);
     logVoice(
       "answer submit",
       `${responseText.length} characters; session=${activeRef.current.id}`,
@@ -405,7 +444,18 @@ function App() {
       candidateTranscriptRef.current = "";
       if (result.session.status === "complete") {
         const next = updatedSessions.find((item) => item.status === "planned");
-        if (next) await start(next, true);
+        if (next) {
+          await start(next, true);
+        } else if (wantsNextHistory && profile) {
+          logVoice("next history requested", "no planned session; creating a fresh history session");
+          const fresh = await api<{ session: Session }>(
+            `/profiles/${profile.id}/coach/start`,
+            { method: "POST" },
+          );
+          setSessions((current) => [...current, fresh.session]);
+          setActive(displaySession(fresh.session, true, profile));
+          mergeTranscript(fresh.session);
+        }
       }
     } catch (e) {
       logVoice(
@@ -612,6 +662,9 @@ function App() {
       .filter((index) => index >= 0)
       .pop();
     if (latestAgentIndex === undefined) return;
+    const voiceTurnKey = `${active.id}:${latestAgentIndex}`;
+    if (lastVoiceTurnKeyRef.current === voiceTurnKey) return;
+    lastVoiceTurnKeyRef.current = voiceTurnKey;
     const turn = active.turns[latestAgentIndex];
     const key = `${active.id}:${latestAgentIndex}`;
     let cancelled = false;
@@ -700,7 +753,7 @@ function App() {
         window.clearTimeout(speechFallbackTimerRef.current);
       window.speechSynthesis?.cancel();
     };
-  }, [active?.id, active?.turns.length, active?.status]);
+  }, [active?.id, active?.turns.length, active?.status, voiceReplayNonce]);
 
   useEffect(
     () => () => {
@@ -897,24 +950,8 @@ function App() {
                   Round {Math.min(active.current_round, active.max_rounds)} of{" "}
                   {active.max_rounds}
                 </span>
-                <button
-                  className="ghost compact"
-                  onClick={() => void resetSession()}
-                  disabled={busy}
-                >
-                  Reset / New session ↻
-                </button>
-                {nextPlannedSession && (
-                  <button
-                    className="ghost compact"
-                    onClick={() => void continueInterview()}
-                    disabled={busy}
-                  >
-                    Continue next history →
-                  </button>
-                )}
               </div>
-              <div className="conversation">
+              <div className="conversation" ref={conversationRef}>
                 {conversationTurns.map((turn) => {
                   const key = `${turn.sessionId}:${turn.index}`;
                   const latestActiveAgent =
@@ -977,6 +1014,20 @@ function App() {
                               : "Coach speaking"
                         : "Text conversation is active"}
                     </span>
+                    <button
+                      className="ghost compact"
+                      onClick={continueCurrentSession}
+                      disabled={busy}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      className="ghost compact"
+                      onClick={() => void resetSession()}
+                      disabled={busy}
+                    >
+                      Reset ↻
+                    </button>
                     {voiceEnabled ? (
                       <button
                         className="primary compact"
@@ -1023,6 +1074,15 @@ function App() {
                   <p>{active.feedback.gaps?.join(" ")}</p>
                 </div>
               </div>
+              {nextPlannedSession && (
+                <button
+                  className="primary compact"
+                  onClick={() => void continueInterview()}
+                  disabled={busy}
+                >
+                  Continue next history →
+                </button>
+              )}
             </div>
           )}
         </section>

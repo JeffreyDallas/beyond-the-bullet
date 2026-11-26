@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -26,7 +27,7 @@ def _bullet_for_session(profile: Profile, session: Session) -> ResumeBullet:
     return bullet
 
 
-def _opening_prompt(bullet: ResumeBullet) -> str:
+def _opening_prompt(bullet: ResumeBullet, candidate_name: str = "candidate") -> str:
     details = json.dumps(bullet.bullets)
     return f"""You are starting an interview about one specific resume history item.
 Role or history title: {bullet.title or bullet.text}
@@ -34,23 +35,43 @@ Organization: {bullet.organization or 'Not specified'}
 Location and dates: {bullet.location or 'Not specified'}; {bullet.dates or 'Not specified'}
 Specific focus area: {bullet.category or 'experience'}
 Source-backed details for this focus area: {details}
+Candidate name: {candidate_name}
 
 Ask one concise first question about the specific focus area and details above.
 Do not ask a generic career-goals question when source-backed details are available.
-Do not refer to another history item or invent facts."""
+Do not refer to another history item or invent facts. Address the candidate as their name or "you"; never address them as "User", "user", or a transcript role label."""
 
 
-def _follow_up_prompt(bullet: ResumeBullet, session: Session) -> str:
+def _follow_up_prompt(bullet: ResumeBullet, session: Session, candidate_name: str = "candidate") -> str:
     transcript = "\n".join(f"{turn.role}: {turn.text}" for turn in session.turns)
     return f"""You are interviewing a candidate about one resume history section.
 Resume section: {bullet.text}
 Source-backed bullets: {json.dumps(bullet.bullets)}
+Candidate name: {candidate_name}
 Conversation so far:
 {transcript}
 
 Ask exactly one natural follow-up question that responds to the latest answer and probes one unresolved detail.
 Stay grounded in the resume and candidate answers. Never invent facts. Do not say that you are generating a question.
-If the candidate has already explained ownership, implementation, and evidence of outcome clearly, reply with DONE instead of another question."""
+If the latest candidate answer is unrelated to this resume history, do not answer that unrelated question and do not treat it as evidence. Briefly redirect the candidate back to this history item, then ask one relevant question.
+If the candidate has already explained ownership, implementation, and evidence of outcome clearly, reply with DONE instead of another question.
+Address the candidate as their name or "you"; never address them as "User", "user", or a transcript role label."""
+
+
+def _address_candidate(text: str, candidate_name: str) -> str:
+    """Replace role-label salutations that an LLM may copy from the transcript."""
+    return re.sub(r"^\s*(?:user|candidate)\s*,\s*", f"{candidate_name}, ", text, count=1, flags=re.IGNORECASE)
+
+
+def _is_obviously_unrelated(answer: str, bullet: ResumeBullet) -> bool:
+    """Catch long off-topic questions before they can become coach evidence."""
+    words = set(re.findall(r"[a-z]{4,}", answer.lower()))
+    source = " ".join(
+        [bullet.title, bullet.organization, bullet.location, bullet.category, bullet.text, *bullet.bullets]
+    )
+    source_words = set(re.findall(r"[a-z]{4,}", source.lower()))
+    question_start = bool(re.match(r"\s*(what|who|where|when|why|how|is|are|can|do|does)\b", answer, re.I))
+    return len(words) >= 4 and question_start and not words.intersection(source_words)
 
 
 async def generate_opening_question(state: CoachState, llm: LocalLLM) -> dict[str, Any]:
@@ -58,7 +79,8 @@ async def generate_opening_question(state: CoachState, llm: LocalLLM) -> dict[st
     bullet = state["bullet"]
     focus = bullet.bullets[0] if bullet.bullets else bullet.text
     fallback = f"Your {bullet.category.lower()} work at {bullet.title or bullet.text} included: {focus} What did you personally own, and what changed because of your work?"
-    question, provider, input_tokens, output_tokens = await llm.complete(_opening_prompt(bullet), fallback)
+    question, provider, input_tokens, output_tokens = await llm.complete(_opening_prompt(bullet, state["profile"].name), fallback)
+    question = _address_candidate(question, state["profile"].name)
     session.status = "active"
     session.current_round = 1
     session.turns = [Turn(role="agent", text=question, bullet_id=bullet.id)]
@@ -77,7 +99,15 @@ async def generate_follow_up(state: CoachState, llm: LocalLLM) -> dict[str, Any]
     )
     session.current_round += 1
     fallback = "What is the most important detail about your ownership, decision, or outcome that we have not made concrete yet?"
-    question, provider, input_tokens, output_tokens = await llm.complete(_follow_up_prompt(bullet, session), fallback)
+    if _is_obviously_unrelated(answer, bullet):
+        focus = bullet.category.lower() if bullet.category else "this resume history"
+        question = f"Let's stay focused on your {focus} work at {bullet.title or bullet.text}. What specific decision or implementation detail did you personally own?"
+        provider = "guardrail"
+        input_tokens = max(1, len(answer.split()))
+        output_tokens = max(1, len(question.split()))
+    else:
+        question, provider, input_tokens, output_tokens = await llm.complete(_follow_up_prompt(bullet, session, state["profile"].name), fallback)
+        question = _address_candidate(question, state["profile"].name)
     if question.strip().upper() == "DONE" or session.current_round >= session.max_rounds:
         session.status = "complete"
         session.feedback = {

@@ -7,7 +7,7 @@ from backend.main import app, extract_bullets
 from backend.models import Turn
 from backend.metrics import DEFAULT_METRICS_PATH, MetricsDB
 from backend.storage import DEFAULT_STORE_PATH, JsonStore
-from backend.orchestrator import _opening_prompt
+from backend.orchestrator import _address_candidate, _opening_prompt
 
 
 def test_default_local_data_paths_are_independent_of_working_directory(tmp_path):
@@ -43,6 +43,26 @@ def test_opening_prompt_includes_specific_history_focus():
     assert "Specific focus area" in prompt
     assert "reducing RAM consumption" in prompt
     assert "generic career-goals question" in prompt
+
+
+def test_coach_role_label_is_personalized():
+    assert _address_candidate("User, can you explain that decision?", "Carlo") == "Carlo, can you explain that decision?"
+    assert _address_candidate("Can you explain that decision?", "Carlo") == "Can you explain that decision?"
+
+
+def test_unrelated_candidate_question_is_redirected_to_resume_history(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.main.store.path", tmp_path / "store.json")
+    monkeypatch.setattr("backend.main.store", JsonStore(str(tmp_path / "store.json")))
+    client = TestClient(app)
+    profile = client.post(
+        "/api/profiles",
+        json={"name": "Off Topic Test", "raw_text": "Built a resilient payment service with measurable recovery improvements."},
+    ).json()
+    session = client.post(f"/api/profiles/{profile['id']}/plan").json()[0]
+    client.post(f"/api/sessions/{session['id']}/start")
+    result = client.post(f"/api/sessions/{session['id']}/answer", json={"text": "What is the weather today in Chicago?"})
+    assert result.status_code == 200
+    assert "stay focused" in result.json()["session"]["turns"][-1]["text"].lower()
 
 
 def test_health_and_profile_flow(tmp_path, monkeypatch):
