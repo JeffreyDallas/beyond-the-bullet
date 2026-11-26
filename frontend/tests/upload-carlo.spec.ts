@@ -17,7 +17,7 @@ test("runs a complete mock text interview and records agent activity", async ({ 
   await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Carlo");
   await page.locator('input[type="file"]').setInputFiles(path.resolve(__dirname, "../../tests/resources/CarloResume.txt"));
   await page.getByRole("button", { name: "Parse & save profile" }).click();
-  await expect(page.getByText("Walk me through this experience")).toBeVisible();
+  await expect(page.locator(".conversation .turn.agent").first()).toBeVisible();
 
   for (const [index, answer] of [
     "I implemented the embedded firmware and owned the testing approach.",
@@ -52,7 +52,7 @@ test("runs the mock workflow for the additional PDF and DOCX resumes", async ({ 
     await expect(page.locator("textarea")).toContainText(fixture.name);
     await page.getByRole("button", { name: "Parse & save profile" }).click();
     await expect(page.locator(".bullets .bullet").first()).toBeVisible();
-    await expect(page.getByText("Walk me through this experience")).toBeVisible();
+    await expect(page.locator(".conversation .turn.agent").first()).toBeVisible();
 
     for (const [index, answer] of [
       "I owned the implementation and documented the process.",

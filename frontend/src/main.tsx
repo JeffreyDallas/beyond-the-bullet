@@ -62,7 +62,8 @@ function App() {
   };
   const transitionFor = (session: Session, sourceProfile = profile) => {
     const bullet = sourceProfile?.bullets.find((item) => item.id === session.bullet_id);
-    const destination = bullet?.organization || bullet?.title || "the next experience";
+    const focus = bullet?.category && bullet.category !== "experience" ? ` · ${bullet.category.toLowerCase()}` : "";
+    const destination = `${bullet?.organization || bullet?.title || "the next experience"}${focus}`;
     return `Now let's move on to ${destination}.`;
   };
   const displaySession = (session: Session, withTransition = false, sourceProfile = profile) => {

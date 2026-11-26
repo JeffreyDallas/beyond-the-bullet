@@ -27,7 +27,17 @@ def _bullet_for_session(profile: Profile, session: Session) -> ResumeBullet:
 
 
 def _opening_prompt(bullet: ResumeBullet) -> str:
-    return f"Ask one concise first interview question about this resume history item: {bullet.text}"
+    details = json.dumps(bullet.bullets)
+    return f"""You are starting an interview about one specific resume history item.
+Role or history title: {bullet.title or bullet.text}
+Organization: {bullet.organization or 'Not specified'}
+Location and dates: {bullet.location or 'Not specified'}; {bullet.dates or 'Not specified'}
+Specific focus area: {bullet.category or 'experience'}
+Source-backed details for this focus area: {details}
+
+Ask one concise first question about the specific focus area and details above.
+Do not ask a generic career-goals question when source-backed details are available.
+Do not refer to another history item or invent facts."""
 
 
 def _follow_up_prompt(bullet: ResumeBullet, session: Session) -> str:
@@ -46,7 +56,8 @@ If the candidate has already explained ownership, implementation, and evidence o
 async def generate_opening_question(state: CoachState, llm: LocalLLM) -> dict[str, Any]:
     session = state["session"]
     bullet = state["bullet"]
-    fallback = "Walk me through this experience in your own words. What did you personally own, and what changed because of your work?"
+    focus = bullet.bullets[0] if bullet.bullets else bullet.text
+    fallback = f"Your {bullet.category.lower()} work at {bullet.title or bullet.text} included: {focus} What did you personally own, and what changed because of your work?"
     question, provider, input_tokens, output_tokens = await llm.complete(_opening_prompt(bullet), fallback)
     session.status = "active"
     session.current_round = 1

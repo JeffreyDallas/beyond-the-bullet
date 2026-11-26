@@ -7,6 +7,7 @@ from backend.main import app, extract_bullets
 from backend.models import Turn
 from backend.metrics import DEFAULT_METRICS_PATH, MetricsDB
 from backend.storage import DEFAULT_STORE_PATH, JsonStore
+from backend.orchestrator import _opening_prompt
 
 
 def test_default_local_data_paths_are_independent_of_working_directory(tmp_path):
@@ -33,6 +34,15 @@ def test_resume_parser_preserves_grouped_source_bullets():
 def test_coach_prefix_is_removed_from_turn_text():
     turn = Turn(role="agent", text="Here's a potential follow-up question: What did you own?")
     assert turn.text == "What did you own?"
+
+
+def test_opening_prompt_includes_specific_history_focus():
+    resume = Path(__file__).parent / "resources" / "CarloResume.txt"
+    entry = next(item for item in extract_bullets(resume.read_text()) if item.title == "Firmware Engineer I")
+    prompt = _opening_prompt(entry)
+    assert "Specific focus area" in prompt
+    assert "reducing RAM consumption" in prompt
+    assert "generic career-goals question" in prompt
 
 
 def test_health_and_profile_flow(tmp_path, monkeypatch):

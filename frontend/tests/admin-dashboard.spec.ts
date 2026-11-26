@@ -25,7 +25,7 @@ test("renders session, usage, interviewer, and conversation data in the admin da
 
   await expect(page.getByRole("heading", { name: "Session usage" })).toBeVisible();
   await expect(page.locator("#sessions")).toContainText(profile.name);
-  await expect(page.locator("#sessions")).toContainText("3");
+  await expect(page.locator("#sessions tr")).toHaveCount(3);
 
   await expect(page.getByRole("heading", { name: "LLM calls" })).toBeVisible();
   await expect(page.locator("#usage")).toContainText("mock");

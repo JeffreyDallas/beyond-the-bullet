@@ -2,34 +2,37 @@
 
 Local, resume-grounded interview practice for defending every line of your experience.
 
-This repository currently implements MVP stages 1 and 2:
+This repository currently implements the local MVP:
 
 - local-only, no-login profile creation with resume text or TXT/PDF/DOCX upload
-- grouped parsed work, education, and project history with three focused interview rounds per history item
+- grouped parsed work, education, and project history with source-backed bullet lists
 - adaptive follow-up questions through Ollama when available, with an offline fallback
-- LangGraph orchestration that randomly selects a resume history item and starts probing it
+- LangGraph orchestration for opening questions, follow-ups, transcript state, and model-driven completion
+- automatic progression from one planned job, education entry, or project to the next, with a continuous transcript in the browser
 - persisted sessions, pause/resume, transcript-grounded feedback, approved Experience Vault facts, and a bullet dashboard API
-- browser-friendly listen controls and voice-ready UI; full local STT/TTS remains optional
+- optional browser voice mode with automatic pause detection, recognition recovery, and an in-panel voice debug trace; full local STT/TTS remains optional
 
 ## Run locally
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 npm --prefix frontend install
 npm --prefix frontend run build
 uvicorn backend.main:app --reload
 ```
 
+Use Python 3.11 or 3.12. The optional voice dependencies currently do not support Python 3.14.
+
 Open <http://127.0.0.1:8000>. The app stores local data in `data/store.json`, which is ignored by Git.
 
-To delete every local profile and its related sessions, facts, transcripts, and metrics:
+To delete every local profile and its related sessions, facts, transcripts, and metrics from the canonical repository-local store:
 
 ```bash
-python -m backend.cli delete-all-profiles
+./.venv/bin/python -m backend.cli delete-all-profiles
 # or skip the confirmation prompt explicitly:
-python -m backend.cli delete-all-profiles --yes
+./.venv/bin/python -m backend.cli delete-all-profiles --yes
 ```
 
 For local LLM questions, follow [docs/Llama-LLM-Local-Setup.md](docs/Llama-LLM-Local-Setup.md), install and run [Ollama](https://ollama.com), then pull a model:
@@ -43,23 +46,23 @@ Set `OLLAMA_URL` and `OLLAMA_MODEL` to use another local Ollama model. If Ollama
 ## Tests
 
 ```bash
-pytest -q
+./.venv/bin/python -m pytest -q
 npm --prefix frontend run build
 ```
 
-Playwright tests can be added under `frontend/tests` and run with `npm --prefix frontend test` after starting the server.
+Playwright tests run with `npm --prefix frontend test`; the Playwright configuration starts isolated application and admin servers automatically.
 
 To watch the complete Playwright suite in a browser, use `npm --prefix frontend run test:headed`. For a slower run that makes each browser action easier to follow, use `npm --prefix frontend run test:headed:slow` (500 ms between actions). You can choose another delay with `PW_SLOW_MO`, for example `PW_SLOW_MO=1000 npm --prefix frontend run test:headed`.
 
 To record the slow headed run for later playback, use `npm --prefix frontend run test:headed:slow:video`. Playwright saves the recordings as `.webm` files under `frontend/test-results/`, one video per test. Open a `.webm` file in a browser or media player. To record a different run, set `PW_VIDEO=on`, for example `PW_VIDEO=on npm --prefix frontend run test:headed -- admin-dashboard.spec.ts`.
 
-The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the separate local admin dashboard with `uvicorn backend.admin:app --reload --port 8001`, then open <http://127.0.0.1:8001>. Usage is stored in `data/metrics.sqlite3` and includes LLM calls plus session duration and forward/backward conversation counts.
+The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the separate local admin dashboard with `uvicorn backend.admin:app --reload --port 8001`, then open <http://127.0.0.1:8001>. The admin Sessions table shows usage and agent activity; select Users & progress to choose an individual session by ID/start time and inspect only that session's transcript. Normal usage is stored in `data/store.json` and `data/metrics.sqlite3`. Playwright uses isolated `.data/e2e` storage and cleans it up after the suite.
 
 ## Scope and privacy
 
 The app is intentionally a localhost prototype: there is no login, hosted inference, analytics export, URL scraping, or public deployment. Resume/profile text is treated as untrusted candidate data; it is not used as system instructions. Delete a local profile from the profile menu when its data should be removed.
 
-The default interview mode is text-only. Speech-to-text and text-to-speech are not enabled in the user flow. The Playwright suite covers the Carlo TXT resume plus the Daniel PDF and Melissa DOCX resumes, using a deterministic mock LLM and three candidate answers per interview.
+The default interview mode is text-only. Speech-to-text and text-to-speech are not enabled unless voice mode is explicitly enabled. The Playwright suite covers the Carlo TXT resume plus the Daniel PDF and Melissa DOCX resumes, using a deterministic mock LLM and three candidate answers per interview. Test data is isolated from normal local profiles.
 
 ## Optional local voice models
 
@@ -90,7 +93,7 @@ For development with Vite:
 VITE_ENABLE_VOICE=true npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Voice mode uses the browser's `SpeechRecognition`/`webkitSpeechRecognition` and `speechSynthesis` APIs. The coach transcript types progressively while speech plays; after the coach finishes, the microphone starts automatically and interim candidate speech appears live in the transcript field. There are no Talk or Listen toggle buttons in voice mode. Browser support and microphone permissions are required. Automated tests intentionally leave this flag disabled.
+Voice mode uses the browser's `SpeechRecognition`/`webkitSpeechRecognition` and `speechSynthesis` APIs. The coach transcript types progressively while speech plays; after the coach finishes, the microphone starts automatically and interim candidate speech appears live in the transcript field. A brief pause submits the answer automatically; unexpected recognition endings are recovered when possible. Expand the Voice debug panel under the transcript to inspect phase transitions, microphone track state, recognition events, silence timers, and transcript length. There are no Talk or Listen toggle buttons in voice mode. Browser support and microphone permissions are required. Automated tests intentionally leave this flag disabled.
 
 For a built app, voice mode can also be enabled per URL without rebuilding by opening <http://127.0.0.1:8000/?voice=1>. The browser will request microphone permission when the first coach question finishes speaking.
 

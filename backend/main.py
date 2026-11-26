@@ -319,6 +319,7 @@ async def start_random_coach_session(profile_id: str) -> dict:
     result = await start_random_session(profile, llm)
     session = result["session"]
     bullet = next(item for item in profile.bullets if item.id == session.bullet_id)
+    logger.info("coach_session_selected profile=%s session=%s bullet=%s title=%s category=%s details=%s", profile.id, session.id, bullet.id, bullet.title, bullet.category, len(bullet.bullets))
     metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, result["provider"])
     metrics.start_session(session.id, profile.name)
     record_agent_activity(session, profile, bullet, result["question"], follow_up=False)
