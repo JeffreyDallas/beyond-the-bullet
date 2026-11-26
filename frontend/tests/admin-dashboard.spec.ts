@@ -37,7 +37,7 @@ test("renders session, usage, interviewer, and conversation data in the admin da
   await expect(page.locator("#usage")).toContainText(/\d+/);
 
   await expect(page.getByRole("heading", { name: "AI interviewer performance" })).toBeVisible();
-  await expect(page.locator("#agent-activities")).toContainText("What tradeoff or constraint");
+  await expect(page.locator("#agent-activities")).toContainText("What is the most important detail");
 
   await expect(page.getByRole("heading", { name: "Conversation records" })).toBeVisible();
   await expect(page.locator("#conversations")).toContainText("I owned the reconciliation workflow");

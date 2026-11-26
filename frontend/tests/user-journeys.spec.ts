@@ -10,7 +10,9 @@ test("creates a user, uploads a resume, and displays grouped parsed experiences"
   await expect(page.getByRole("textbox", { name: "Paste resume or profile text" })).toContainText("Carlo Morgan");
   await page.getByRole("button", { name: "Parse & save profile" }).click();
   await expect(page.getByText("Parsed experiences")).toBeVisible();
-  await expect(page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" }).first()).toBeVisible();
+  const firmware = page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" }).first();
+  await expect(firmware).toBeVisible();
+  await expect(firmware).toContainText("Develop and maintain embedded firmware");
 });
 
 test("switches between saved user profiles from the top-right menu", async ({ page }) => {
@@ -61,4 +63,5 @@ test("plays back a pre-generated transcript in the conversation area", async ({ 
   await expect(page.locator(".conversation .turn.user")).toHaveCount(3);
   await expect(page.locator(".conversation")).toContainText("I owned the ingestion service");
   await expect(page.getByText("Session reflection")).toBeVisible();
+  await expect(page.getByText("Round 4 of 5")).toBeVisible();
 });

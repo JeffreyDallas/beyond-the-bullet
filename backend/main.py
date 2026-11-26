@@ -14,8 +14,8 @@ from pypdf import PdfReader
 
 from .llm import LocalLLM
 from .metrics import MetricsDB
-from .models import AnswerInput, FactInput, Profile, ProfileInput, ResumeBullet, Session, Turn, VaultFact
-from .orchestrator import start_random_session
+from .models import AnswerInput, FactInput, Profile, ProfileInput, ResumeBullet, Session, VaultFact
+from .orchestrator import continue_coach_session, start_coach_session, start_random_session
 from .storage import JsonStore
 from .voice import LocalSpeechService, VoiceNotConfigured
 
@@ -336,15 +336,12 @@ async def start_session(session_id: str) -> dict:
     bullet = next((item for item in profile.bullets if item.id == session.bullet_id), None)
     if not bullet:
         raise HTTPException(404, "Bullet not found")
-    prompt = f"Ask one concise first interview question about this resume bullet: {bullet.text}"
-    fallback = f"Walk me through this experience in your own words. What did you personally own, and what changed because of your work?"
-    question, provider, input_tokens, output_tokens = await llm.complete(prompt, fallback)
-    metrics.record_usage(profile.name, llm.model, input_tokens, output_tokens, session.id, provider)
+    result = await start_coach_session(profile, session, llm)
+    question = result["question"]
+    provider = result["provider"]
+    metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, provider)
     metrics.start_session(session.id, profile.name)
     record_agent_activity(session, profile, bullet, question, follow_up=False)
-    session.status = "active"
-    session.current_round = 1
-    session.turns = [Turn(role="agent", text=question, bullet_id=bullet.id)]
     session.updated_at = datetime.utcnow()
     store.put("sessions", session.id, session)
     return {"session": session, "provider": provider}
@@ -358,34 +355,17 @@ async def answer_session(session_id: str, payload: AnswerInput) -> dict:
     answer = payload.text.strip()
     if not answer:
         raise HTTPException(400, "Answer cannot be empty")
-    session.turns.append(Turn(role="user", text=answer, bullet_id=session.bullet_id))
-    session.covered_topics.extend(topic for topic in ["personal ownership", "implementation detail", "impact"] if topic in answer.lower() and topic not in session.covered_topics)
-    session.current_round += 1
     profile = profile_or_404(session.profile_id)
-    bullet = next(item for item in profile.bullets if item.id == session.bullet_id)
-    transcript = "\n".join(f"{turn.role}: {turn.text}" for turn in session.turns)
-    fallback = "What is the most important detail about your ownership, decision, or outcome that we have not made concrete yet?"
-    prompt = f"""You are interviewing a candidate about one resume history section.
-Resume section: {bullet.text}
-Source-backed bullets: {json.dumps(bullet.bullets)}
-Conversation so far:
-{transcript}
-
-Ask exactly one natural follow-up question that responds to the latest answer and probes one unresolved detail.
-Stay grounded in the resume and candidate answers. Never invent facts. Do not say that you are generating a question.
-If the candidate has already explained ownership, implementation, and evidence of outcome clearly, reply with DONE instead of another question."""
-    question, provider, input_tokens, output_tokens = await llm.complete(prompt, fallback)
-    metrics.record_usage(profile.name, llm.model, input_tokens, output_tokens, session.id, provider)
+    result = await continue_coach_session(profile, session, answer, llm)
+    question = result["question"]
+    provider = result["provider"]
+    metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, provider)
     metrics.record_forward(session.id, profile.name)
-    done = question.strip().upper() == "DONE"
-    if done or session.current_round >= session.max_rounds:
-        session.status = "complete"
+    if session.status == "complete":
         metrics.finish_session(session.id)
-        session.feedback = {"strengths": ["Completed a focused explanation."], "gaps": ["Add concrete evidence and measurable impact where possible."], "next_step": "Approve useful facts to your Experience Vault and revisit the gaps."}
     else:
-        session.turns.append(Turn(role="agent", text=question, bullet_id=bullet.id))
+        bullet = next(item for item in profile.bullets if item.id == session.bullet_id)
         record_agent_activity(session, profile, bullet, question, follow_up=True)
-        session.unresolved_gaps = ["specific evidence", "tradeoff or constraint"]
     session.updated_at = datetime.utcnow()
     store.put("sessions", session.id, session)
     return {"session": session, "provider": provider}

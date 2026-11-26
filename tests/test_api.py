@@ -46,6 +46,37 @@ def test_health_and_profile_flow(tmp_path, monkeypatch):
     assert random_start.json()["selected_history"]["id"] in {bullet["id"] for bullet in profile["bullets"]}
 
 
+def test_langgraph_owns_follow_up_state_and_model_completion(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.main.store.path", tmp_path / "store.json")
+    monkeypatch.setattr("backend.main.store", __import__("backend.storage", fromlist=["JsonStore"]).JsonStore(str(tmp_path / "store.json")))
+    client = TestClient(app)
+    profile = client.post(
+        "/api/profiles",
+        json={"name": "Graph Test", "raw_text": "Designed a resilient ingestion pipeline with measurable recovery improvements."},
+    ).json()
+    session = client.post(f"/api/profiles/{profile['id']}/plan").json()[0]
+
+    started = client.post(f"/api/sessions/{session['id']}/start").json()["session"]
+    assert started["status"] == "active"
+    assert started["current_round"] == 1
+    assert len(started["turns"]) == 1
+
+    answers = [
+        "I owned the ingestion service and its deployment.",
+        "I chose retries and ordering to handle the operational constraints.",
+        "I measured recovery with integration tests and documented the outcome.",
+    ]
+    result = None
+    for answer in answers:
+        result = client.post(f"/api/sessions/{session['id']}/answer", json={"text": answer}).json()["session"]
+
+    assert result["status"] == "complete"
+    assert result["max_rounds"] == 5
+    assert len([turn for turn in result["turns"] if turn["role"] == "agent"]) == 3
+    assert len([turn for turn in result["turns"] if turn["role"] == "user"]) == 3
+    assert all(turn["text"] != "DONE" for turn in result["turns"])
+
+
 def test_voice_is_opt_in_and_model_free_by_default():
     client = TestClient(app)
     status = client.get("/api/voice/status")

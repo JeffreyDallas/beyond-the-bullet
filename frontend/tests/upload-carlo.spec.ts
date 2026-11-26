@@ -7,7 +7,9 @@ test("uploads Carlo resume and parses grouped experiences", async ({ page }) => 
   await expect(page.locator("textarea")).toContainText("Carlo Morgan");
   await page.getByRole("button", { name: "Parse & save profile" }).click();
   await expect(page.getByText("Parsed experiences")).toBeVisible();
-  await expect(page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" })).toBeVisible();
+  const firmware = page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" });
+  await expect(firmware).toBeVisible();
+  await expect(firmware).toContainText("reducing RAM consumption");
 });
 
 test("runs a complete mock text interview and records agent activity", async ({ page, request }) => {
@@ -26,12 +28,11 @@ test("runs a complete mock text interview and records agent activity", async ({ 
     const send = page.getByRole("button", { name: "Send answer" });
     await expect(send).toBeEnabled();
     await send.click();
-    if (index < 2) {
-      await expect(page.getByText(`Round ${index + 2} of 3`)).toBeVisible();
-    }
+    if (index < 2) await expect(page.getByText(`Round ${index + 2} of 5`)).toBeVisible();
   }
 
-  await expect(page.getByText("Session reflection")).toBeVisible();
+  await expect(page.locator(".anchor span")).toContainText("Round 1 of 5");
+  await expect(page.getByText("Choose a bullet to explore")).not.toBeVisible();
   const performance = await request.get("http://127.0.0.1:8001/api/admin/agent-performance");
   expect(performance.ok()).toBeTruthy();
   expect((await performance.json()).summary.questions).toBeGreaterThanOrEqual(3);
@@ -61,8 +62,9 @@ test("runs the mock workflow for the additional PDF and DOCX resumes", async ({ 
       const send = page.getByRole("button", { name: "Send answer" });
       await expect(send).toBeEnabled();
       await send.click();
-      if (index < 2) await expect(page.getByText(`Round ${index + 2} of 3`)).toBeVisible();
+      if (index < 2) await expect(page.getByText(`Round ${index + 2} of 5`)).toBeVisible();
     }
-    await expect(page.getByText("Session reflection")).toBeVisible();
+    await expect(page.locator(".anchor span")).toContainText("Round 1 of 5");
+    await expect(page.getByText("Choose a bullet to explore")).not.toBeVisible();
   }
 });

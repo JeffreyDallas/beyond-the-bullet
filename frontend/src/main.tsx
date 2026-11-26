@@ -5,11 +5,12 @@ import "./style.css";
 type Profile = { id: string; name: string; raw_text: string; bullets: { id: string; text: string; title?: string; organization?: string; location?: string; dates?: string; bullets?: string[]; category?: string }[] };
 type Turn = { role: string; text: string };
 type Session = { id: string; bullet_id: string; status: string; current_round: number; max_rounds: number; turns: Turn[]; feedback: { strengths?: string[]; gaps?: string[]; next_step?: string } };
-type VoiceRecognition = { lang: string; continuous: boolean; interimResults: boolean; onstart: (() => void) | null; onresult: ((event: { resultIndex?: number; results: { length: number; [key: number]: { isFinal: boolean; [key: number]: { transcript: string } } } }) => void) | null; onspeechend: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
+type VoiceRecognition = { lang: string; continuous: boolean; interimResults: boolean; onstart: (() => void) | null; onresult: ((event: { resultIndex?: number; results: { length: number; [key: number]: { isFinal: boolean; [key: number]: { transcript: string } } } }) => void) | null; onspeechstart: (() => void) | null; onspeechend: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
 
 const voiceEnabled = import.meta.env.VITE_ENABLE_VOICE === "true" || new URLSearchParams(window.location.search).get("voice") === "1";
 const COACH_HANDOFF_PAUSE_MS = 900;
-const CANDIDATE_SILENCE_MS = 1600;
+const CANDIDATE_SILENCE_MS = 900;
+const RECOGNITION_END_GRACE_MS = 250;
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...init });
@@ -54,13 +55,28 @@ function App() {
     try {
       const saved = await api<Profile>("/profiles", { method: "POST", body: JSON.stringify({ name, raw_text: resume }) });
       const planned = await api<Session[]>(`/profiles/${saved.id}/plan`, { method: "POST" });
-      const started = await api<{ session: Session }>(`/profiles/${saved.id}/coach/start`, { method: "POST" });
-      setProfile(saved); setSessions([...planned, started.session]); setActive(started.session); await loadDashboard(saved.id); await refreshProfiles(); setNotice("Coach picked a resume history item and started the interview.");
+      const started = await api<{ session: Session }>(`/sessions/${planned[0].id}/start`, { method: "POST" });
+      setProfile(saved); setSessions(planned.map((session) => session.id === started.session.id ? started.session : session)); setActive(started.session); await loadDashboard(saved.id); await refreshProfiles(); setNotice("Coach started the first resume history interview.");
     } catch (e) { setNotice(String(e)); } finally { setBusy(false); }
   };
-  const openProfile = async (id: string) => { const p = await api<Profile>(`/profiles/${id}`); setProfile(p); setName(p.name); setResume(p.raw_text); setActive(null); setSessions(await api<Session[]>(`/profiles/${id}/sessions`)); await loadDashboard(id); };
+  const openProfile = async (id: string) => {
+    const p = await api<Profile>(`/profiles/${id}`);
+    setProfile(p); setName(p.name); setResume(p.raw_text); setActive(null); setBusy(true);
+    try {
+      let loadedSessions = await api<Session[]>(`/profiles/${id}/sessions`);
+      if (loadedSessions.length === 0) loadedSessions = await api<Session[]>(`/profiles/${id}/plan`, { method: "POST" });
+      setSessions(loadedSessions);
+      const current = loadedSessions.find((session) => session.status === "active");
+      if (current) setActive(current);
+      else {
+        const next = loadedSessions.find((session) => session.status === "planned");
+        if (next) await start(next);
+      }
+      await loadDashboard(id);
+    } finally { setBusy(false); }
+  };
   const deleteProfile = async () => { if (!profile || !window.confirm(`Delete ${profile.name} and all local practice data?`)) return; await api(`/profiles/${profile.id}`, { method: "DELETE" }); setProfile(null); setDashboard(null); setSessions([]); setResume(""); await refreshProfiles(); setNotice("Profile and related local data deleted."); };
-  const start = async (session: Session) => { const result = await api<{ session: Session }>(`/sessions/${session.id}/start`, { method: "POST" }); setActive(result.session); };
+  const start = async (session: Session) => { const result = await api<{ session: Session }>(`/sessions/${session.id}/start`, { method: "POST" }); setActive(result.session); setSessions((current) => current.map((item) => item.id === result.session.id ? result.session : item)); };
   const startRandom = async () => { if (!profile) return; const result = await api<{ session: Session }>(`/profiles/${profile.id}/coach/start`, { method: "POST" }); setActive(result.session); setSessions((current) => [...current, result.session]); };
   const openSession = (session: Session) => { if (session.status === "complete") setActive(session); else void start(session); };
 
@@ -74,16 +90,21 @@ function App() {
     stopListening(); setBusy(true);
     try {
       const result = await api<{ session: Session }>(`/sessions/${activeRef.current.id}/answer`, { method: "POST", body: JSON.stringify({ text: responseText }) });
-      setActive(result.session); setSessions((current) => current.map((s) => s.id === result.session.id ? result.session : s)); setAnswer(""); finalTranscriptRef.current = ""; candidateTranscriptRef.current = "";
+      const updatedSessions = sessions.map((item) => item.id === result.session.id ? result.session : item);
+      setSessions(updatedSessions); setActive(result.session); setAnswer(""); finalTranscriptRef.current = ""; candidateTranscriptRef.current = "";
+      if (result.session.status === "complete") {
+        const next = updatedSessions.find((item) => item.status === "planned");
+        if (next) await start(next);
+      }
     } catch (e) { setNotice(String(e)); } finally { submissionInFlightRef.current = false; setBusy(false); }
   };
 
-  const submitAfterSilence = () => {
+  const submitAfterSilence = (delay = CANDIDATE_SILENCE_MS) => {
     clearSilenceTimer();
     const transcript = (candidateTranscriptRef.current || finalTranscriptRef.current || answerRef.current).trim();
     if (!transcript) { setWaitingForSilence(false); return; }
     setWaitingForSilence(true);
-    silenceTimerRef.current = window.setTimeout(() => { setWaitingForSilence(false); void sendAnswer(transcript); }, CANDIDATE_SILENCE_MS);
+    silenceTimerRef.current = window.setTimeout(() => { setWaitingForSilence(false); void sendAnswer(transcript); }, delay);
   };
 
   const startListening = async () => {
@@ -98,9 +119,10 @@ function App() {
     manualStopRef.current = false; finalTranscriptRef.current = ""; candidateTranscriptRef.current = ""; clearSilenceTimer(); setWaitingForSilence(false);
     const recognition = new Recognition(); recognition.lang = "en-US"; recognition.continuous = true; recognition.interimResults = true;
     recognition.onstart = () => setListening(true);
+    recognition.onspeechstart = () => { clearSilenceTimer(); setWaitingForSilence(false); };
     recognition.onresult = (event) => { let interim = ""; const first = event.resultIndex ?? 0; for (let index = first; index < event.results.length; index += 1) { const result = event.results[index]; if (result.isFinal) finalTranscriptRef.current += `${result[0].transcript} `; else interim += result[0].transcript; } candidateTranscriptRef.current = `${finalTranscriptRef.current}${interim}`.trim(); setAnswer(candidateTranscriptRef.current); submitAfterSilence(); };
-    recognition.onspeechend = () => submitAfterSilence();
-    recognition.onend = () => { recognitionRef.current = null; setListening(false); if (!manualStopRef.current && (finalTranscriptRef.current.trim() || answerRef.current.trim())) submitAfterSilence(); };
+    recognition.onspeechend = () => submitAfterSilence(650);
+    recognition.onend = () => { recognitionRef.current = null; setListening(false); if (!manualStopRef.current && (candidateTranscriptRef.current.trim() || finalTranscriptRef.current.trim() || answerRef.current.trim())) submitAfterSilence(RECOGNITION_END_GRACE_MS); };
     recognitionRef.current = recognition; recognition.start();
   };
 
