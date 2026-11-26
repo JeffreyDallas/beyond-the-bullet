@@ -58,6 +58,30 @@ test("resets a profile into a new session without deleting previous conversation
   expect((await sessionsAfter.json()).length).toBe(2);
 });
 
+test("does not auto-start the next history after loading an existing profile", async ({ page, request }) => {
+  const profile = await (await request.post("/api/profiles", {
+    data: {
+      name: "E2E Continue Choice",
+      raw_text: "## PROFESSIONAL EXPERIENCE\n### First role\nAcme | Austin, TX | 2024\n- Built a reliable service with measurable recovery.\n### Second role\nBeta | Dallas, TX | 2023\n- Improved deployment safety with integration tests.",
+    },
+  })).json();
+  const sessions = await (await request.post(`/api/profiles/${profile.id}/plan`, { data: {} })).json();
+  await request.post(`/api/sessions/${sessions[0].id}/start`);
+  for (const answer of ["I owned the implementation.", "I handled the deployment tradeoff.", "I measured the result.", "I documented the evidence."]) {
+    await request.post(`/api/sessions/${sessions[0].id}/answer`, { data: { text: answer } });
+  }
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Choose existing profile/ }).click();
+  await page.locator(".popover button").filter({ hasText: profile.name }).last().click();
+  await expect(page.getByRole("button", { name: /Continue next history/ })).toBeVisible();
+  await expect(page.locator(".conversation .turn.agent")).toHaveCount(3);
+
+  const afterLoad = await (await request.get(`/api/profiles/${profile.id}/sessions`)).json();
+  expect(afterLoad.length).toBe(2);
+  expect(afterLoad[1].status).toBe("planned");
+});
+
 test("plays back a pre-generated transcript in the conversation area", async ({ page, request }) => {
   const profileResponse = await request.post("/api/profiles", {
     data: { name: "E2E Playback", raw_text: "Designed a resilient data ingestion pipeline processing customer events with measurable reliability improvements." },
