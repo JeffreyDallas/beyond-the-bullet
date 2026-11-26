@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from docx import Document
 from pypdf import PdfReader
@@ -227,12 +227,15 @@ async def dashboard(profile_id: str) -> dict:
 
 
 frontend_dir = Path(__file__).parent.parent / "frontend"
-assets_dir = frontend_dir / "assets"
-if assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(frontend_dir / "index.html")
+frontend_dist = frontend_dir / "dist"
+if frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+else:
+    @app.get("/", response_class=HTMLResponse)
+    async def frontend_not_built() -> str:
+        return (
+            "<h1>Beyond the Bullet frontend is not built</h1>"
+            "<p>Run <code>npm --prefix frontend install</code> and "
+            "<code>npm --prefix frontend run build</code>, then reload this page.</p>"
+        )
 

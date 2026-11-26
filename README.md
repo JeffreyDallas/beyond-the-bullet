@@ -23,6 +23,14 @@ uvicorn backend.main:app --reload
 
 Open <http://127.0.0.1:8000>. The app stores local data in `data/store.json`, which is ignored by Git.
 
+To delete every local profile and its related sessions, facts, transcripts, and metrics:
+
+```bash
+python -m backend.cli delete-all-profiles
+# or skip the confirmation prompt explicitly:
+python -m backend.cli delete-all-profiles --yes
+```
+
 For local LLM questions, follow [docs/Llama-LLM-Local-Setup.md](docs/Llama-LLM-Local-Setup.md), install and run [Ollama](https://ollama.com), then pull a model:
 
 ```bash
@@ -51,5 +59,24 @@ The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the
 The app is intentionally a localhost prototype: there is no login, hosted inference, analytics export, URL scraping, or public deployment. Resume/profile text is treated as untrusted candidate data; it is not used as system instructions. Delete a local profile from the profile menu when its data should be removed.
 
 The default interview mode is text-only. Speech-to-text and text-to-speech are not enabled in the user flow. The Playwright suite covers the Carlo TXT resume plus the Daniel PDF and Melissa DOCX resumes, using a deterministic mock LLM and three candidate answers per interview.
+
+## Optional browser voice mode
+
+Voice is opt-in. The default build remains text-only. To enable browser speech-to-text and text-to-speech controls:
+
+```bash
+VITE_ENABLE_VOICE=true npm --prefix frontend run build
+uvicorn backend.main:app --reload --port 8000
+```
+
+For development with Vite:
+
+```bash
+VITE_ENABLE_VOICE=true npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
+```
+
+Voice mode uses the browser's `SpeechRecognition`/`webkitSpeechRecognition` and `speechSynthesis` APIs. The coach transcript types progressively while speech plays; after the coach finishes, the microphone starts automatically and interim candidate speech appears live in the transcript field. There are no Talk or Listen toggle buttons in voice mode. Browser support and microphone permissions are required. Automated tests intentionally leave this flag disabled.
+
+For a built app, voice mode can also be enabled per URL without rebuilding by opening <http://127.0.0.1:8000/?voice=1>. The browser will request microphone permission when the first coach question finishes speaking.
 
 Automated tests never spend model tokens: `tests/conftest.py` forces `MOCK_LLM=1` for unit tests, and the Playwright web servers use the same flag. The mock provider exercises API responses, session state transitions, transcript rendering, profile switching, parsing, metrics, and admin-agent reporting without calling Ollama or a paid model. Use the real Ollama model only for manual development runs.

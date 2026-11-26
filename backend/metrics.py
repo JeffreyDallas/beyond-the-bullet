@@ -83,6 +83,12 @@ class MetricsDB:
                 (datetime.now(timezone.utc).isoformat(), session_id, user, question, relevance_score, int(follow_up), int(deep_dive), notes),
             )
 
+    def clear_all(self) -> None:
+        with self.connection() as connection:
+            connection.execute("DELETE FROM llm_usage")
+            connection.execute("DELETE FROM session_metrics")
+            connection.execute("DELETE FROM agent_activity")
+
     def usage(self) -> list[dict]:
         with self.connection() as connection:
             return [dict(row) for row in connection.execute("SELECT * FROM llm_usage ORDER BY time DESC").fetchall()]

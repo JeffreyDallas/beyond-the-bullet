@@ -36,3 +36,7 @@ class JsonStore:
             state[collection].pop(key, None)
             self._write(state)
 
+    def clear_all(self) -> None:
+        with self.lock:
+            self._write({"profiles": {}, "sessions": {}, "facts": {}})
+
