@@ -1,3 +1,4 @@
+import json
 import re
 from io import BytesIO
 from contextlib import asynccontextmanager
@@ -6,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from docx import Document
 from pypdf import PdfReader
@@ -14,18 +15,165 @@ from pypdf import PdfReader
 from .llm import LocalLLM
 from .metrics import MetricsDB
 from .models import AnswerInput, FactInput, Profile, ProfileInput, ResumeBullet, Session, Turn, VaultFact
+from .orchestrator import start_random_session
 from .storage import JsonStore
+from .voice import LocalSpeechService, VoiceNotConfigured
 
 
 store = JsonStore()
 llm = LocalLLM()
 metrics = MetricsDB()
+speech = LocalSpeechService()
 
 
 def extract_bullets(text: str) -> list[ResumeBullet]:
-    lines = [re.sub(r"^[\s•*-]+", "", line).strip() for line in text.splitlines()]
-    candidates = [line for line in lines if len(line) >= 35]
-    return [ResumeBullet(text=line, source="pasted/uploaded resume") for line in candidates[:12]]
+    """Parse explicit resume headings without inventing missing history."""
+    raw_lines = [line.strip() for line in text.splitlines()]
+    lines = [re.sub(r"^[\s•*\-]+", "", line).strip() for line in raw_lines]
+    entries: list[ResumeBullet] = []
+    section = ""
+    section_names = {
+        "professional experience": "experience",
+        "work experience": "experience",
+        "experience": "experience",
+        "education": "education",
+        "academic projects": "project",
+        "projects": "project",
+    }
+    date_pattern = re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[ .]+\d{4}|\b\d{4}\b", re.I)
+
+    def clean(value: str) -> str:
+        return re.sub(r"[*_`]+", "", value).strip(" |-:")
+
+    def metadata(value: str, following: str = "") -> tuple[str, str, str]:
+        parts = [clean(part) for part in value.split("|") if clean(part)]
+        dates = clean(following) if following and date_pattern.search(following) else ""
+        if len(parts) >= 3:
+            return parts[0], parts[1], parts[2]
+        if len(parts) == 2:
+            return parts[0], parts[1], dates
+        return (parts[0] if parts else ""), "", dates
+
+    def add_entry(
+        title: str,
+        metadata_line: str = "",
+        dates_line: str = "",
+        category: str = "experience",
+        details: list[str] | None = None,
+    ) -> None:
+        organization, location, dates = metadata(metadata_line, dates_line)
+        if not title:
+            return
+        summary = " — ".join(value for value in [title, organization] if value)
+        if dates:
+            summary = f"{summary} · {dates}"
+        entries.append(
+            ResumeBullet(
+                text=summary,
+                title=title,
+                organization=organization,
+                location=location,
+                dates=dates,
+                bullets=details or [],
+                category=category,
+                source="parsed resume history",
+            )
+        )
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        normalized = re.sub(r"^#+\s*", "", line).strip().lower().rstrip(":")
+        if normalized in section_names or normalized.startswith("professional experience"):
+            section = section_names.get("professional experience" if normalized.startswith("professional experience") else normalized, "")
+            index += 1
+            continue
+        if raw_lines[index].startswith("#") and not raw_lines[index].startswith("###"):
+            section = ""
+            index += 1
+            continue
+        if not section:
+            index += 1
+            continue
+        title = clean(re.sub(r"^###\s*", "", line)) if raw_lines[index].startswith("###") else ""
+        metadata_line = ""
+        dates_line = ""
+        details: list[str] = []
+        if title and index + 1 < len(lines):
+            metadata_line = lines[index + 1]
+            if index + 2 < len(lines) and date_pattern.search(lines[index + 2]):
+                dates_line = lines[index + 2]
+        elif index + 1 < len(lines) and "|" in lines[index + 1] and date_pattern.search(lines[index + 1]):
+            title = clean(line)
+            metadata_line = lines[index + 1]
+        if title and not title.startswith("-") and len(title) > 2:
+            next_index = index + (3 if dates_line else 2)
+            while next_index < len(lines):
+                candidate = lines[next_index]
+                candidate_raw = raw_lines[next_index]
+                candidate_normalized = re.sub(r"^#+\s*", "", candidate).strip().lower().rstrip(":")
+                if candidate_normalized in section_names or candidate_normalized.startswith("professional experience") or candidate_raw.startswith("#"):
+                    break
+                if candidate and not candidate.startswith("#"):
+                    details.append(clean(candidate))
+                next_index += 1
+            add_entry(title, metadata_line, dates_line, section, details)
+            index = next_index
+            continue
+        index += 1
+    if entries:
+        return entries[:16]
+    lines = [line for line in lines if len(line) >= 35]
+    return [ResumeBullet(text=line, bullets=[line], source="pasted/uploaded resume") for line in lines[:12]]
+
+
+def _json_array(text: str) -> list[dict] | None:
+    match = re.search(r"\[[\s\S]*\]", text)
+    if not match:
+        return None
+    try:
+        value = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, list) and all(isinstance(item, dict) for item in value) else None
+
+
+async def parse_resume_history(text: str) -> tuple[list[ResumeBullet], str, int, int]:
+    fallback = extract_bullets(text)
+    prompt = f"""Extract the candidate's explicit work experience, education, and projects from the resume text below.
+Return ONLY a JSON array. Each object must have: title, organization, location, dates, category, bullets.
+The bullets field must contain the source-backed accomplishment or responsibility bullets for that section.
+Use only facts explicitly present in the resume. Do not infer employers, dates, titles, metrics, technologies, or achievements.
+If a field is not stated, use an empty string or empty array. Do not interpret images and do not add commentary.
+
+<resume_text>
+{text}
+</resume_text>"""
+    response, provider, input_tokens, output_tokens = await llm.complete(prompt, "[]")
+    parsed = _json_array(response)
+    if not parsed:
+        return fallback, provider, input_tokens, output_tokens
+    entries: list[ResumeBullet] = []
+    for item in parsed:
+        title = str(item.get("title", "")).strip()
+        if not title:
+            continue
+        bullets = item.get("bullets", [])
+        if not isinstance(bullets, list):
+            bullets = []
+        entries.append(
+            ResumeBullet(
+                title=title,
+                organization=str(item.get("organization", "")).strip(),
+                location=str(item.get("location", "")).strip(),
+                dates=str(item.get("dates", "")).strip(),
+                bullets=[str(value).strip() for value in bullets if str(value).strip()],
+                category=str(item.get("category", "experience")).strip() or "experience",
+                text=" — ".join(value for value in [title, str(item.get("organization", "")).strip()] if value),
+                source="LLM-parsed resume history",
+            )
+        )
+    return (entries or fallback), provider, input_tokens, output_tokens
 
 
 def profile_or_404(profile_id: str) -> Profile:
@@ -66,6 +214,31 @@ async def health() -> dict:
     return {"status": "ok", "llm": llm.model}
 
 
+@app.get("/api/voice/status")
+async def voice_status() -> dict:
+    return speech.status().__dict__
+
+
+@app.post("/api/voice/transcribe")
+async def transcribe_voice(file: UploadFile = File(...)) -> dict:
+    try:
+        return speech.transcribe(await file.read())
+    except VoiceNotConfigured as error:
+        raise HTTPException(503, str(error)) from error
+
+
+@app.post("/api/voice/synthesize")
+async def synthesize_voice(payload: dict[str, str]) -> Response:
+    text = payload.get("text", "").strip()
+    if not text:
+        raise HTTPException(400, "Text cannot be empty")
+    try:
+        audio = speech.synthesize(text)
+    except VoiceNotConfigured as error:
+        raise HTTPException(503, str(error)) from error
+    return Response(content=audio, media_type="audio/wav")
+
+
 @app.get("/api/profiles")
 async def list_profiles() -> list[Profile]:
     return [Profile.model_validate(item) for item in store.all()["profiles"].values()]
@@ -73,7 +246,8 @@ async def list_profiles() -> list[Profile]:
 
 @app.post("/api/profiles")
 async def create_profile(payload: ProfileInput) -> Profile:
-    profile = Profile(name=payload.name.strip() or "Candidate", raw_text=payload.raw_text, bullets=extract_bullets(payload.raw_text))
+    bullets, _, _, _ = await parse_resume_history(payload.raw_text)
+    profile = Profile(name=payload.name.strip() or "Candidate", raw_text=payload.raw_text, bullets=bullets)
     store.put("profiles", profile.id, profile)
     return profile
 
@@ -134,6 +308,21 @@ async def create_plan(profile_id: str) -> list[Session]:
     return sessions
 
 
+@app.post("/api/profiles/{profile_id}/coach/start")
+async def start_random_coach_session(profile_id: str) -> dict:
+    profile = profile_or_404(profile_id)
+    if not profile.bullets:
+        raise HTTPException(400, "Profile has no resume history items to explore")
+    result = await start_random_session(profile, llm)
+    session = result["session"]
+    bullet = next(item for item in profile.bullets if item.id == session.bullet_id)
+    metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, result["provider"])
+    metrics.start_session(session.id, profile.name)
+    record_agent_activity(session, profile, bullet, result["question"], follow_up=False)
+    store.put("sessions", session.id, session)
+    return {"session": session, "provider": result["provider"], "selected_history": bullet}
+
+
 @app.get("/api/profiles/{profile_id}/sessions")
 async def list_sessions(profile_id: str) -> list[Session]:
     profile_or_404(profile_id)
@@ -174,16 +363,22 @@ async def answer_session(session_id: str, payload: AnswerInput) -> dict:
     session.current_round += 1
     profile = profile_or_404(session.profile_id)
     bullet = next(item for item in profile.bullets if item.id == session.bullet_id)
-    fallback_questions = [
-        "What was the hardest technical tradeoff, and what alternatives did you consider?",
-        "How did you measure the outcome, and what evidence supports the result?",
-    ]
-    fallback = fallback_questions[min(session.current_round - 2, len(fallback_questions) - 1)]
-    prompt = f"Resume bullet: {bullet.text}\nPrevious answer: {answer}\nAsk a grounded follow-up question that probes one missing detail. Do not invent facts."
+    transcript = "\n".join(f"{turn.role}: {turn.text}" for turn in session.turns)
+    fallback = "What is the most important detail about your ownership, decision, or outcome that we have not made concrete yet?"
+    prompt = f"""You are interviewing a candidate about one resume history section.
+Resume section: {bullet.text}
+Source-backed bullets: {json.dumps(bullet.bullets)}
+Conversation so far:
+{transcript}
+
+Ask exactly one natural follow-up question that responds to the latest answer and probes one unresolved detail.
+Stay grounded in the resume and candidate answers. Never invent facts. Do not say that you are generating a question.
+If the candidate has already explained ownership, implementation, and evidence of outcome clearly, reply with DONE instead of another question."""
     question, provider, input_tokens, output_tokens = await llm.complete(prompt, fallback)
     metrics.record_usage(profile.name, llm.model, input_tokens, output_tokens, session.id, provider)
     metrics.record_forward(session.id, profile.name)
-    if session.current_round > session.max_rounds:
+    done = question.strip().upper() == "DONE"
+    if done or session.current_round >= session.max_rounds:
         session.status = "complete"
         metrics.finish_session(session.id)
         session.feedback = {"strengths": ["Completed a focused explanation."], "gaps": ["Add concrete evidence and measurable impact where possible."], "next_step": "Approve useful facts to your Experience Vault and revisit the gaps."}

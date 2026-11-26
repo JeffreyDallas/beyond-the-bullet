@@ -1,13 +1,13 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 
-test("uploads Carlo resume and parses experience bullets", async ({ page }) => {
+test("uploads Carlo resume and parses grouped experiences", async ({ page }) => {
   await page.goto("/");
   await page.locator('input[type="file"]').setInputFiles(path.resolve(__dirname, "../../tests/resources/CarloResume.txt"));
   await expect(page.locator("textarea")).toContainText("Carlo Morgan");
   await page.getByRole("button", { name: "Parse & save profile" }).click();
-  await expect(page.getByText("Parsed bullets")).toBeVisible();
-  await expect(page.locator(".bullets .bullet").filter({ hasText: "Junior Firmware Engineer | Embedded Software Engineer" })).toBeVisible();
+  await expect(page.getByText("Parsed experiences")).toBeVisible();
+  await expect(page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" })).toBeVisible();
 });
 
 test("runs a complete mock text interview and records agent activity", async ({ page, request }) => {
@@ -15,8 +15,6 @@ test("runs a complete mock text interview and records agent activity", async ({ 
   await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Carlo");
   await page.locator('input[type="file"]').setInputFiles(path.resolve(__dirname, "../../tests/resources/CarloResume.txt"));
   await page.getByRole("button", { name: "Parse & save profile" }).click();
-  await expect(page.locator(".session-card").first()).toBeVisible();
-  await page.locator(".session-card").first().click();
   await expect(page.getByText("Walk me through this experience")).toBeVisible();
 
   for (const [index, answer] of [
@@ -52,7 +50,6 @@ test("runs the mock workflow for the additional PDF and DOCX resumes", async ({ 
     await expect(page.locator("textarea")).toContainText(fixture.name);
     await page.getByRole("button", { name: "Parse & save profile" }).click();
     await expect(page.locator(".bullets .bullet").first()).toBeVisible();
-    await page.locator(".session-card").first().click();
     await expect(page.getByText("Walk me through this experience")).toBeVisible();
 
     for (const [index, answer] of [

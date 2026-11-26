@@ -1,0 +1,5 @@
+# Optional local voice mode. Keep this separate so text-only development and
+# automated tests stay lightweight and never download model weights.
+faster-whisper>=1.1
+kokoro>=0.9
+soundfile>=0.12

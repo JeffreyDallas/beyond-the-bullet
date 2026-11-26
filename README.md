@@ -5,8 +5,9 @@ Local, resume-grounded interview practice for defending every line of your exper
 This repository currently implements MVP stages 1 and 2:
 
 - local-only, no-login profile creation with resume text or TXT/PDF/DOCX upload
-- editable parsed bullets and three focused interview rounds per bullet
+- grouped parsed work, education, and project history with three focused interview rounds per history item
 - adaptive follow-up questions through Ollama when available, with an offline fallback
+- LangGraph orchestration that randomly selects a resume history item and starts probing it
 - persisted sessions, pause/resume, transcript-grounded feedback, approved Experience Vault facts, and a bullet dashboard API
 - browser-friendly listen controls and voice-ready UI; full local STT/TTS remains optional
 
@@ -59,6 +60,20 @@ The Carlo resume upload E2E test runs with `npm --prefix frontend test`. Run the
 The app is intentionally a localhost prototype: there is no login, hosted inference, analytics export, URL scraping, or public deployment. Resume/profile text is treated as untrusted candidate data; it is not used as system instructions. Delete a local profile from the profile menu when its data should be removed.
 
 The default interview mode is text-only. Speech-to-text and text-to-speech are not enabled in the user flow. The Playwright suite covers the Carlo TXT resume plus the Daniel PDF and Melissa DOCX resumes, using a deterministic mock LLM and three candidate answers per interview.
+
+## Optional local voice models
+
+The backend includes opt-in adapters for local `faster-whisper` speech-to-text and Kokoro text-to-speech. Install them only when working on local model voice mode:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements-voice.txt
+export LOCAL_VOICE_MODE=true
+export WHISPER_MODEL=small.en
+uvicorn backend.main:app --reload --port 8000
+```
+
+The first speech request may download the selected model weights. Models are not initialized or downloaded at server startup. Check `/api/voice/status`; use `POST /api/voice/transcribe` with an audio upload and `POST /api/voice/synthesize` with `{"text":"..."}`. See [docs/Local-Voice-Setup.md](docs/Local-Voice-Setup.md) for configuration and hardware notes.
 
 ## Optional browser voice mode
 

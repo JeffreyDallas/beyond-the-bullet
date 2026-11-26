@@ -1,13 +1,19 @@
 from datetime import datetime
+import re
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ResumeBullet(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     text: str
+    title: str = ""
+    organization: str = ""
+    location: str = ""
+    dates: str = ""
+    bullets: list[str] = Field(default_factory=list)
     category: str = "experience"
     source: str = "pasted text"
     approved: bool = True
@@ -28,6 +34,11 @@ class Turn(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    @field_validator("text")
+    @classmethod
+    def remove_coach_follow_up_prefix(cls, value: str) -> str:
+        return re.sub(r"\bHere['’]s a potential follow-up question:\s*", "", value, flags=re.IGNORECASE).strip()
+
 
 class Session(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -35,7 +46,7 @@ class Session(BaseModel):
     bullet_id: str
     status: Literal["planned", "active", "complete", "paused"] = "planned"
     current_round: int = 0
-    max_rounds: int = 3
+    max_rounds: int = 5
     turns: list[Turn] = Field(default_factory=list)
     covered_topics: list[str] = Field(default_factory=list)
     unresolved_gaps: list[str] = Field(default_factory=list)

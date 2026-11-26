@@ -3,14 +3,14 @@ import path from "node:path";
 
 const resource = (name: string) => path.resolve(__dirname, `../../tests/resources/${name}`);
 
-test("creates a user, uploads a resume, and displays backend-parsed bullets", async ({ page }) => {
+test("creates a user, uploads a resume, and displays grouped parsed experiences", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Upload Parser");
   await page.locator('input[type="file"]').setInputFiles(resource("CarloResume.txt"));
   await expect(page.getByRole("textbox", { name: "Paste resume or profile text" })).toContainText("Carlo Morgan");
   await page.getByRole("button", { name: "Parse & save profile" }).click();
-  await expect(page.getByText("Parsed bullets")).toBeVisible();
-  await expect(page.locator(".bullets .bullet").filter({ hasText: "Junior Firmware Engineer" }).first()).toBeVisible();
+  await expect(page.getByText("Parsed experiences")).toBeVisible();
+  await expect(page.locator(".bullets .bullet").filter({ hasText: "Firmware Engineer I" }).first()).toBeVisible();
 });
 
 test("switches between saved user profiles from the top-right menu", async ({ page }) => {
