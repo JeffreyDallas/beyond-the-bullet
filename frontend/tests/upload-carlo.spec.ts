@@ -33,6 +33,7 @@ test("runs a complete mock text interview and records agent activity", async ({ 
 
   await expect(page.locator(".anchor span")).toContainText("Round 1 of 5");
   await expect(page.getByText("Choose a bullet to explore")).not.toBeVisible();
+  await expect(page.locator(".conversation")).toContainText("Now let's move on to");
   const performance = await request.get("http://127.0.0.1:8001/api/admin/agent-performance");
   expect(performance.ok()).toBeTruthy();
   expect((await performance.json()).summary.questions).toBeGreaterThanOrEqual(3);
@@ -66,5 +67,6 @@ test("runs the mock workflow for the additional PDF and DOCX resumes", async ({ 
     }
     await expect(page.locator(".anchor span")).toContainText("Round 1 of 5");
     await expect(page.getByText("Choose a bullet to explore")).not.toBeVisible();
+    await expect(page.locator(".conversation")).toContainText("Now let's move on to");
   }
 });

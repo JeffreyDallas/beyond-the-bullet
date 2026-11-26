@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+import time
 from io import BytesIO
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -24,6 +26,7 @@ store = JsonStore()
 llm = LocalLLM()
 metrics = MetricsDB()
 speech = LocalSpeechService()
+logger = logging.getLogger("beyond_the_bullet.coach")
 
 
 def extract_bullets(text: str) -> list[ResumeBullet]:
@@ -336,9 +339,12 @@ async def start_session(session_id: str) -> dict:
     bullet = next((item for item in profile.bullets if item.id == session.bullet_id), None)
     if not bullet:
         raise HTTPException(404, "Bullet not found")
+    started_at = time.perf_counter()
+    logger.info("coach_request session=%s round=%s prompt_history=%s", session.id, session.current_round + 1, len(session.turns))
     result = await start_coach_session(profile, session, llm)
     question = result["question"]
     provider = result["provider"]
+    logger.info("coach_response session=%s provider=%s output_chars=%s duration_ms=%s", session.id, provider, len(question), round((time.perf_counter() - started_at) * 1000))
     metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, provider)
     metrics.start_session(session.id, profile.name)
     record_agent_activity(session, profile, bullet, question, follow_up=False)
@@ -356,9 +362,12 @@ async def answer_session(session_id: str, payload: AnswerInput) -> dict:
     if not answer:
         raise HTTPException(400, "Answer cannot be empty")
     profile = profile_or_404(session.profile_id)
+    started_at = time.perf_counter()
+    logger.info("coach_followup_request session=%s round=%s answer_chars=%s", session.id, session.current_round, len(answer))
     result = await continue_coach_session(profile, session, answer, llm)
     question = result["question"]
     provider = result["provider"]
+    logger.info("coach_followup_response session=%s provider=%s output_chars=%s duration_ms=%s status=%s", session.id, provider, len(question), round((time.perf_counter() - started_at) * 1000), session.status)
     metrics.record_usage(profile.name, llm.model, result["input_tokens"], result["output_tokens"], session.id, provider)
     metrics.record_forward(session.id, profile.name)
     if session.status == "complete":

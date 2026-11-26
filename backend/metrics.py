@@ -1,11 +1,24 @@
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_METRICS_PATH = PROJECT_ROOT / "data" / "metrics.sqlite3"
+
+
+def _data_directory() -> Path:
+    configured = os.getenv("BEYOND_BULLET_DATA_DIR")
+    if not configured:
+        return DEFAULT_METRICS_PATH.parent
+    directory = Path(configured)
+    return directory if directory.is_absolute() else PROJECT_ROOT / directory
+
+
 class MetricsDB:
-    def __init__(self, path: str = "data/metrics.sqlite3") -> None:
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path is not None else _data_directory() / "metrics.sqlite3"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as connection:
             connection.executescript(

@@ -38,6 +38,26 @@ test("switches between saved user profiles from the top-right menu", async ({ pa
   await expect(page.getByRole("textbox", { name: "Paste resume or profile text" })).toContainText("Carlo Morgan");
 });
 
+test("resets a profile into a new session without deleting previous conversations", async ({ page, request }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Reset");
+  await page.getByRole("textbox", { name: "Paste resume or profile text" }).fill("Built a resilient service that processed customer events with measurable reliability improvements.");
+  await page.getByRole("button", { name: "Parse & save profile" }).click();
+  await expect(page.getByRole("button", { name: /Reset \/ New session/ })).toBeVisible();
+
+  const before = await request.get("/api/profiles");
+  const profile = (await before.json()).find((item: { name: string }) => item.name === "E2E Reset");
+  const sessionsBefore = await request.get(`/api/profiles/${profile.id}/sessions`);
+  expect((await sessionsBefore.json()).length).toBe(1);
+
+  await page.getByRole("button", { name: /Reset \/ New session/ }).click();
+  await expect(page.getByText("Started a new interview session from the beginning.")).toBeVisible();
+  await expect(page.locator(".conversation .turn.agent")).toHaveCount(1);
+
+  const sessionsAfter = await request.get(`/api/profiles/${profile.id}/sessions`);
+  expect((await sessionsAfter.json()).length).toBe(2);
+});
+
 test("plays back a pre-generated transcript in the conversation area", async ({ page, request }) => {
   const profileResponse = await request.post("/api/profiles", {
     data: { name: "E2E Playback", raw_text: "Designed a resilient data ingestion pipeline processing customer events with measurable reliability improvements." },
@@ -57,7 +77,6 @@ test("plays back a pre-generated transcript in the conversation area", async ({ 
   await page.goto("/");
   await page.getByRole("button", { name: "Choose profile" }).click();
   await page.locator(".popover button").filter({ hasText: profile.name }).last().click();
-  await page.locator(".session-card").first().click();
   await expect(page.locator(".conversation")).toBeVisible();
   await expect(page.locator(".conversation .turn.agent")).toHaveCount(3);
   await expect(page.locator(".conversation .turn.user")).toHaveCount(3);

@@ -1,9 +1,22 @@
+from os import chdir, getcwd
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from backend.main import app, extract_bullets
 from backend.models import Turn
+from backend.metrics import DEFAULT_METRICS_PATH, MetricsDB
+from backend.storage import DEFAULT_STORE_PATH, JsonStore
+
+
+def test_default_local_data_paths_are_independent_of_working_directory(tmp_path):
+    original_directory = getcwd()
+    try:
+        chdir(tmp_path)
+        assert JsonStore().path == DEFAULT_STORE_PATH
+        assert MetricsDB().path == DEFAULT_METRICS_PATH
+    finally:
+        chdir(original_directory)
 
 
 def test_resume_parser_preserves_grouped_source_bullets():
