@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: "./tests",
   use: {
     baseURL: "http://127.0.0.1:5173",
+    video: process.env.PW_VIDEO === "on" ? "on" : "off",
     launchOptions: {
       slowMo: Number(process.env.PW_SLOW_MO ?? 0),
     },

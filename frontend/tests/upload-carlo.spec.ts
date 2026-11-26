@@ -12,7 +12,7 @@ test("uploads Carlo resume and parses experience bullets", async ({ page }) => {
 
 test("runs a complete mock text interview and records agent activity", async ({ page, request }) => {
   await page.goto("/");
-  await page.getByRole("textbox", { name: "Profile name" }).fill("Carlo E2E User");
+  await page.getByRole("textbox", { name: "Profile name" }).fill("E2E Carlo");
   await page.locator('input[type="file"]').setInputFiles(path.resolve(__dirname, "../../tests/resources/CarloResume.txt"));
   await page.getByRole("button", { name: "Parse & save profile" }).click();
   await expect(page.locator(".session-card").first()).toBeVisible();
@@ -47,7 +47,7 @@ test("runs the mock workflow for the additional PDF and DOCX resumes", async ({ 
 
   for (const fixture of fixtures) {
     await page.goto("/");
-    await page.getByRole("textbox", { name: "Profile name" }).fill(`${fixture.name} E2E User`);
+    await page.getByRole("textbox", { name: "Profile name" }).fill(`E2E ${fixture.file.startsWith("Daniel") ? "Daniel" : "Melissa"}`);
     await page.locator('input[type="file"]').setInputFiles(path.resolve(__dirname, `../../tests/resources/${fixture.file}`));
     await expect(page.locator("textarea")).toContainText(fixture.name);
     await page.getByRole("button", { name: "Parse & save profile" }).click();

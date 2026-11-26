@@ -29,6 +29,46 @@ async def sessions() -> list[dict]:
     return metrics.sessions()
 
 
+def user_summary_rows() -> list[dict]:
+    session_rows = metrics.sessions()
+    profiles = list(store.all()["profiles"].values())
+    names = {profile["name"] for profile in profiles} | {row["user"] for row in session_rows}
+    rows = []
+    for name in sorted(names):
+        user_sessions = [row for row in session_rows if row["user"] == name]
+        matching_profiles = [profile for profile in profiles if profile["name"] == name]
+        bullet_count = sum(len(profile.get("bullets", [])) for profile in matching_profiles)
+        completed = sum(row.get("ended_at") is not None for row in user_sessions)
+        rows.append({
+            "user": name,
+            "profile_count": len(matching_profiles),
+            "session_count": len(user_sessions),
+            "completed_sessions": completed,
+            "bullet_count": bullet_count,
+            "progress_percent": round((completed / bullet_count) * 100) if bullet_count else 0,
+            "input_tokens": sum(row["input_tokens"] for row in user_sessions),
+            "output_tokens": sum(row["output_tokens"] for row in user_sessions),
+        })
+    return rows
+
+
+@app.get("/api/admin/users")
+async def users() -> list[dict]:
+    return user_summary_rows()
+
+
+@app.get("/api/admin/users/{user_name:path}")
+async def user_detail(user_name: str) -> dict:
+    summary = next((row for row in user_summary_rows() if row["user"] == user_name), None)
+    if summary is None:
+        return {"user": user_name, "sessions": [], "conversations": []}
+    session_rows = [row for row in metrics.sessions() if row["user"] == user_name]
+    matching_profile_ids = {profile["id"] for profile in store.all()["profiles"].values() if profile["name"] == user_name}
+    session_ids = {row["session_id"] for row in session_rows}
+    conversation_rows = [row for row in await conversations() if row["session_id"] in session_ids or row["user"] in matching_profile_ids]
+    return {"summary": summary, "sessions": session_rows, "conversations": conversation_rows}
+
+
 @app.get("/api/admin/agent-performance")
 async def agent_performance() -> dict:
     return metrics.agent_performance()
